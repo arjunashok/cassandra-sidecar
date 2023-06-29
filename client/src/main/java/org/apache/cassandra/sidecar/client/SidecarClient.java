@@ -166,6 +166,8 @@ public class SidecarClient implements AutoCloseable
     /**
      * Executes the token-range replicas request using the default retry policy and configured selection policy
      *
+     * @param instances the list of Sidecar instances to try for this request
+     * @param keyspace  the keyspace in Cassandra
      * @return a completable future of the token-range replicas
      */
     public CompletableFuture<TokenRangeReplicasResponse> tokenRangeReplicas(List<? extends SidecarInstance> instances,

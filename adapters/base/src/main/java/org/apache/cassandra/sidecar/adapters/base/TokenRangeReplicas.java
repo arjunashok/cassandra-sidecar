@@ -202,7 +202,17 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
                                                         Partitioner partitioner,
                                                         Set<String> replicaSet)
     {
-        if (start.compareTo(partitioner.maxToken) == 0)
+
+        // Range ending at minToken is "unwrapped" to end at the maxToken.
+        // Note: These being open-closed ranges, this will result in exclusion of partitioner's minToken from
+        // allocation. This is by-design as it is never assigned to a node in Cassandra:
+        // https://github.com/apache/cassandra/blob/trunk/src/java/org/apache/cassandra/dht/IPartitioner.java#L77
+        if (end.compareTo(partitioner.minToken) == 0)
+        {
+            return Collections.singletonList(
+            new TokenRangeReplicas(start, partitioner.maxToken, partitioner, replicaSet));
+        }
+        else if (start.compareTo(partitioner.maxToken) == 0)
         {
             return Collections.singletonList(
             new TokenRangeReplicas(partitioner.minToken, end, partitioner, replicaSet));

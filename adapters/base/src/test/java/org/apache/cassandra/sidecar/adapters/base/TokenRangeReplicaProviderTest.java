@@ -190,7 +190,7 @@ public class TokenRangeReplicaProviderTest
 
         TokenRangeReplicasResponse result = instance.tokenRangeReplicas(TEST_KEYSPACE, Partitioner.Murmur3);
         assertThat(result).isNotNull();
-        assertThat(result.readReplicas().size()).isEqualTo(4);
+        assertThat(result.readReplicas()).hasSize(3);
         assertThat(validateRangeExists(result.readReplicas(), "3074457345618258602",
                                        Long.toString(Long.MAX_VALUE))).isTrue();
         assertThat(validateRangeExists(result.writeReplicas(), "3074457345618258602",
@@ -224,8 +224,8 @@ public class TokenRangeReplicaProviderTest
 
         TokenRangeReplicasResponse result = instance.tokenRangeReplicas(TEST_KEYSPACE, Partitioner.Murmur3);
         assertThat(result).isNotNull();
-        assertThat(result.readReplicas().size()).isEqualTo(4);
-        assertThat(result.writeReplicas().size()).isEqualTo(5);
+        assertThat(result.readReplicas()).hasSize(3);
+        assertThat(result.writeReplicas()).hasSize(4);
         // Write replicas includes the new range ending at "maxToken"
         assertThat(validateRangeExists(result.writeReplicas(), "6148914691236517204",
                                        Long.toString(Long.MAX_VALUE))).isTrue();
@@ -259,8 +259,8 @@ public class TokenRangeReplicaProviderTest
 
         TokenRangeReplicasResponse result = instance.tokenRangeReplicas(TEST_KEYSPACE, Partitioner.Murmur3);
         assertThat(result).isNotNull();
-        assertThat(result.readReplicas().size()).isEqualTo(5);
-        assertThat(result.writeReplicas().size()).isEqualTo(5);
+        assertThat(result.readReplicas()).hasSize(4);
+        assertThat(result.writeReplicas()).hasSize(4);
         assertThat(validateRangeExists(result.readReplicas(), "6148914691236517204",
                                        Long.toString(Long.MAX_VALUE))).isTrue();
         assertThat(validateRangeExists(result.writeReplicas(), "6148914691236517204",

@@ -17,6 +17,7 @@ public class TokenRangeReplicasRequest extends DecodableRequest<TokenRangeReplic
         super(ApiEndpointsV1.KEYSPACE_TOKEN_MAPPING_ROUTE.replaceAll(ApiEndpointsV1.KEYSPACE_PATH_PARAM, keyspace));
     }
 
+    @Override
     public HttpMethod method()
     {
         return HttpMethod.GET;

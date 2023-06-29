@@ -346,22 +346,17 @@ public class TokenRangeReplicasTest
                                                       new BigInteger("-3074457345618258603"),
                                                       Partitioner.Murmur3,
                                                       new HashSet<>(Arrays.asList("h9"))));
-
-        // Range ending at minToken will result in a split to accommodate the minToken
-        // eg: (3074457345618258603, MIN] will result in (3074457345618258603, MAX] and single token range (MIN, MIN]
-        List<TokenRangeReplicas> wrappedRangeEndingAtMin =
+        createdList.addAll(
         TokenRangeReplicas.generateTokenRangeReplicas(new BigInteger("3074457345618258602"),
                                                       Partitioner.Murmur3.minToken,
                                                       Partitioner.Murmur3,
-                                                      new HashSet<>(Arrays.asList("h1", "h2", "h3")));
-        assertThat(wrappedRangeEndingAtMin).hasSize(2);
-        createdList.addAll(wrappedRangeEndingAtMin);
+                                                      new HashSet<>(Arrays.asList("h1", "h2", "h3"))));
+
         LOGGER.info("Input:" + createdList);
         List<TokenRangeReplicas> rangeList = TokenRangeReplicas.normalize(createdList);
         LOGGER.info("Result:" + rangeList);
         assertThat(hasOverlaps(rangeList)).isFalse();
-
-        assertThat(rangeList.size()).isEqualTo(5);
+        assertThat(rangeList).hasSize(4);
 
         List<TokenRangeReplicas> expectedExists = TokenRangeReplicas.generateTokenRangeReplicas(
         Partitioner.Murmur3.minToken, new BigInteger("-3074457345618258603"),
@@ -604,21 +599,20 @@ public class TokenRangeReplicasTest
                                                                          new BigInteger("35"),
                                                                          Partitioner.Random,
                                                                          new HashSet<>(Arrays.asList("h6", "h7"))));
-
-        List<TokenRangeReplicas> wrappedRange1 =
+        createdList.addAll(
         TokenRangeReplicas.generateTokenRangeReplicas(new BigInteger("40"),
                                                       new BigInteger("-1"),
                                                       Partitioner.Random,
-                                                      new HashSet<>(Arrays.asList("h1", "h2", "h3")));
-        List<TokenRangeReplicas> wrappedRange2 =
+                                                      new HashSet<>(Arrays.asList("h1", "h2", "h3"))));
+
+
+        List<TokenRangeReplicas> wrappedRange =
         TokenRangeReplicas.generateTokenRangeReplicas(new BigInteger("35"),
                                                       new BigInteger("10"),
                                                       Partitioner.Random,
                                                       new HashSet<>(Arrays.asList("h9")));
-        createdList.addAll(wrappedRange1);
-        assertThat(wrappedRange1).hasSize(2);
-        createdList.addAll(wrappedRange2);
-        assertThat(wrappedRange2).hasSize(2);
+        createdList.addAll(wrappedRange);
+        assertThat(wrappedRange).hasSize(2);
         return createdList;
     }
 

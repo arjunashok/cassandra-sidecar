@@ -326,6 +326,8 @@ tasks.register("integrationTest", Test) {
     useJUnitPlatform() {
         includeTags "integrationTest"
     }
+// Uncomment below to run unit tests in parallel
+//    maxParallelForks = Runtime.runtime.availableProcessors() * 2
     reports {
         junitXml.enabled = true
         def destDir = Paths.get(rootProject.rootDir.absolutePath, "build", "test-results", "integration").toFile()

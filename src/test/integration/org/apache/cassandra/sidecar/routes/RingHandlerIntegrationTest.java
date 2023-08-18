@@ -34,8 +34,8 @@ import org.apache.cassandra.distributed.api.IInstanceConfig;
 import org.apache.cassandra.sidecar.IntegrationTestBase;
 import org.apache.cassandra.sidecar.common.data.RingEntry;
 import org.apache.cassandra.sidecar.common.data.RingResponse;
+import org.apache.cassandra.sidecar.testing.CassandraSidecarTestContext;
 import org.apache.cassandra.testing.CassandraIntegrationTest;
-import org.apache.cassandra.testing.CassandraTestContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -52,7 +52,7 @@ class RingHandlerIntegrationTest extends IntegrationTestBase
     {
         String testRoute = "/api/v1/cassandra/ring";
         testWithClient(context, client -> {
-            client.get(config.getPort(), "127.0.0.1", testRoute)
+            client.get(server.actualPort(), "127.0.0.1", testRoute)
                   .expect(ResponsePredicate.SC_OK)
                   .send(context.succeeding(response -> {
                       assertRingResponseOK(response, sidecarTestContext);
@@ -78,7 +78,7 @@ class RingHandlerIntegrationTest extends IntegrationTestBase
     @CassandraIntegrationTest
     void retrieveRingWithExistingKeyspace(VertxTestContext context) throws Exception
     {
-        createTestKeyspace(sidecarTestContext);
+        createTestKeyspace();
         retrieveRingWithKeyspace(context, TEST_KEYSPACE, response -> {
             assertRingResponseOK(response, sidecarTestContext);
             context.completeNow();
@@ -90,14 +90,14 @@ class RingHandlerIntegrationTest extends IntegrationTestBase
     {
         String testRoute = "/api/v1/cassandra/ring/keyspaces/" + keyspace;
         testWithClient(context, client -> {
-            client.get(config.getPort(), "127.0.0.1", testRoute)
+            client.get(server.actualPort(), "127.0.0.1", testRoute)
                   .send(context.succeeding(verifier));
         });
     }
 
-    void assertRingResponseOK(HttpResponse<Buffer> response, CassandraTestContext cassandraTestContext)
+    void assertRingResponseOK(HttpResponse<Buffer> response, CassandraSidecarTestContext cassandraTestContext)
     {
-        IInstance instance = cassandraTestContext.getCluster().getFirstRunningInstance();
+        IInstance instance = cassandraTestContext.cluster().getFirstRunningInstance();
         IInstanceConfig config = instance.config();
         RingResponse ringResponse = response.bodyAsJson(RingResponse.class);
         assertThat(ringResponse).isNotNull()

@@ -242,7 +242,7 @@ public class SSTableUploadHandlerTest extends BaseUploadsHandlerTest
         WebClient client = WebClient.create(vertx);
         String testRoute = "/api/v1/uploads/" + uploadId + "/keyspaces/" + keyspace
                            + "/tables/" + tableName + "/components/" + targetFileName;
-        HttpRequest<Buffer> req = client.put(config.getPort(), "localhost", testRoute);
+        HttpRequest<Buffer> req = client.put(server.actualPort(), "localhost", testRoute);
         if (!expectedMd5.isEmpty())
         {
             req.putHeader(HttpHeaderNames.CONTENT_MD5.toString(), expectedMd5);

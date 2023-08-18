@@ -161,7 +161,7 @@ public class Configuration
     /**
      * @return the Cassandra Instances config
      */
-    public InstancesConfig getInstancesConfig()
+    public InstancesConfig instancesConfig()
     {
         return instancesConfig;
     }

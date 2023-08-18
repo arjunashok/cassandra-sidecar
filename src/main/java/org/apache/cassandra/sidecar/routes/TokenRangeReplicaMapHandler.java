@@ -26,7 +26,6 @@ import com.datastax.driver.core.Metadata;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.SocketAddress;
 import io.vertx.ext.web.RoutingContext;
@@ -42,6 +41,12 @@ import static org.apache.cassandra.sidecar.utils.HttpExceptions.cassandraService
 
 /**
  * Handler which provides token range to read and write replica mapping
+ *
+ * <p>This handler provides token range replicas along with the state of the replicas. For the purpose
+ * of identifying the state of a newly joining node to replace a dead node from a newly joining node,
+ * a new state 'Replacing' has been added.
+ * It is represented by
+ * {@code org.apache.cassandra.sidecar.adapters.base.TokenRangeReplicaProvider.StateWithReplacement}
  */
 @Singleton
 public class TokenRangeReplicaMapHandler extends AbstractHandler<TokenRangeReplicasRequest>
@@ -65,11 +70,6 @@ public class TokenRangeReplicaMapHandler extends AbstractHandler<TokenRangeRepli
                                SocketAddress remoteAddress,
                                TokenRangeReplicasRequest request)
     {
-        String keyspace = request.keyspace();
-
-        logger.debug("TokenRangeReplicaMapHandler received request={}, remoteAddress={}, instance={}",
-                     request, remoteAddress, host);
-
         CassandraAdapterDelegate delegate = metadataFetcher.delegate(host);
 
         StorageOperations storageOperations = delegate.storageOperations();
@@ -83,13 +83,13 @@ public class TokenRangeReplicaMapHandler extends AbstractHandler<TokenRangeRepli
         executorPools.service().executeBlocking(promise -> {
             try
             {
-                context.json(storageOperations.tokenRangeReplicas(keyspace, metadata.getPartitioner()));
+                context.json(storageOperations.tokenRangeReplicas(request.keyspace(), metadata.getPartitioner()));
             }
             catch (UnknownHostException e)
             {
-                processFailure(e, context, request, remoteAddress, host);
+                processFailure(e, context, host, remoteAddress, request);
             }
-        }).onFailure(cause -> processFailure(cause, context, request, remoteAddress, host));
+        }).onFailure(cause -> processFailure(cause, context, host, remoteAddress, request));
     }
 
     @Override
@@ -98,10 +98,10 @@ public class TokenRangeReplicaMapHandler extends AbstractHandler<TokenRangeRepli
         return new TokenRangeReplicasRequest(keyspace(context, true));
     }
 
-    private void processFailure(Throwable cause, RoutingContext context, TokenRangeReplicasRequest request,
-                                SocketAddress remoteAddress, String host)
+    @Override
+    protected void processFailure(Throwable cause, RoutingContext context, String host, SocketAddress remoteAddress,
+                                  TokenRangeReplicasRequest request)
     {
-        context.response().putHeader(HttpHeaders.CONTENT_TYPE, "application/json");
         if (cause instanceof AssertionError &&
             StringUtils.contains(cause.getMessage(), "Unknown keyspace"))
         {

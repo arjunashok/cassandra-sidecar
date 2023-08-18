@@ -241,7 +241,7 @@ public class MainModule extends AbstractModule
     @Singleton
     public InstancesConfig instancesConfig(Configuration configuration)
     {
-        return configuration.getInstancesConfig();
+        return configuration.instancesConfig();
     }
 
     @Provides

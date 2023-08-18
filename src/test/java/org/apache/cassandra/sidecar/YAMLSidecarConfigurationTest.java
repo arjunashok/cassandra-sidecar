@@ -68,7 +68,7 @@ class YAMLSidecarConfigurationTest
                                                                   versionProvider,
                                                                   SIDECAR_VERSION,
                                                                   DnsResolver.DEFAULT);
-        InstancesConfig instancesConfig = configuration.getInstancesConfig();
+        InstancesConfig instancesConfig = configuration.instancesConfig();
         assertThat(instancesConfig.instances().size()).isEqualTo(1);
         InstanceMetadata instanceMetadata = instancesConfig.instances().get(0);
         assertThat(instanceMetadata.host()).isEqualTo("localhost");
@@ -101,7 +101,7 @@ class YAMLSidecarConfigurationTest
                                                                   versionProvider,
                                                                   SIDECAR_VERSION,
                                                                   DnsResolver.DEFAULT);
-        InstancesConfig instancesConfig = configuration.getInstancesConfig();
+        InstancesConfig instancesConfig = configuration.instancesConfig();
         assertThat(instancesConfig.instances().size()).isEqualTo(1);
         InstanceMetadata instanceMetadata = instancesConfig.instances().get(0);
         assertThat(instanceMetadata.host()).isEqualTo("localhost");
@@ -116,7 +116,7 @@ class YAMLSidecarConfigurationTest
                                                                   versionProvider,
                                                                   SIDECAR_VERSION,
                                                                   DnsResolver.DEFAULT);
-        InstancesConfig instancesConfig = configuration.getInstancesConfig();
+        InstancesConfig instancesConfig = configuration.instancesConfig();
         assertThat(instancesConfig.instances().size()).isEqualTo(2);
     }
 

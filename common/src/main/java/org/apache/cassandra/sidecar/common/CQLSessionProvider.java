@@ -126,8 +126,15 @@ public class CQLSessionProvider
         return localSession;
     }
 
-    public synchronized void close()
+    public Session close()
     {
+        Session localSession;
+        synchronized (this)
+        {
+            localSession = this.localSession;
+            this.localSession = null;
+        }
+
         if (localSession != null)
         {
             try
@@ -146,8 +153,8 @@ public class CQLSessionProvider
             {
                 throw propagateCause(e);
             }
-            localSession = null;
         }
+        return localSession;
     }
 
     static RuntimeException propagateCause(ExecutionException e)

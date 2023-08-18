@@ -28,18 +28,30 @@ public abstract class AbstractCassandraTestContext implements AutoCloseable
     public final SimpleCassandraVersion version;
     protected UpgradeableCluster cluster;
 
-    public AbstractCassandraTestContext(SimpleCassandraVersion version, UpgradeableCluster cluster)
+    public CassandraIntegrationTest annotation;
+
+    public AbstractCassandraTestContext(SimpleCassandraVersion version,
+                                        UpgradeableCluster cluster,
+                                        CassandraIntegrationTest annotation)
     {
         this.version = version;
         this.cluster = cluster;
+        this.annotation = annotation;
     }
 
-    public AbstractCassandraTestContext(SimpleCassandraVersion version)
+    public AbstractCassandraTestContext(SimpleCassandraVersion version,
+                                        CassandraIntegrationTest annotation)
     {
         this.version = version;
+        this.annotation = annotation;
     }
 
-    public void close() throws Exception
+    public UpgradeableCluster cluster()
+    {
+        return cluster;
+    }
+
+    public void close()
     {
         if (cluster != null)
         {

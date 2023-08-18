@@ -259,12 +259,16 @@ public class JmxClient implements NotificationListener, Closeable
     }
 
     @Override
-    public synchronized void close() throws IOException
+    public void close() throws IOException
     {
-        JMXConnector connector = jmxConnector;
+        JMXConnector connector;
+        synchronized (this)
+        {
+            connector = jmxConnector;
+            jmxConnector = null;
+        }
         if (connector != null)
         {
-            jmxConnector = null;
             connector.close();
         }
     }

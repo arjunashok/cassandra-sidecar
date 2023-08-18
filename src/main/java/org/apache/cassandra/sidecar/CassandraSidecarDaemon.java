@@ -89,7 +89,7 @@ public class CassandraSidecarDaemon
         List<Future> closingFutures = new ArrayList<>();
         closingFutures.add(server.close());
         executorPools.internal().cancelTimer(healthCheckTimerId);
-        config.getInstancesConfig()
+        config.instancesConfig()
               .instances()
               .forEach(instance ->
                        closingFutures.add(executorPools.internal()
@@ -166,12 +166,12 @@ public class CassandraSidecarDaemon
     }
 
     /**
-     * Checks the health of every instance configured in the {@link Configuration#getInstancesConfig()}.
+     * Checks the health of every instance configured in the {@link Configuration#instancesConfig()}.
      * The health check is executed in a blocking thread to prevent the event-loop threads from blocking.
      */
     private void healthCheck()
     {
-        config.getInstancesConfig().instances()
+        config.instancesConfig().instances()
               .forEach(instanceMetadata ->
                        executorPools.internal()
                                     .executeBlocking(promise -> instanceMetadata.delegate().healthCheck()));

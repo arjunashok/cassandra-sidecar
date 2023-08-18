@@ -71,7 +71,6 @@ class BaseUploadsHandlerTest
     protected Vertx vertx;
     protected HttpServer server;
     protected WebClient client;
-    protected Configuration config;
     protected CassandraAdapterDelegate mockDelegate;
     protected Configuration mockConfiguration;
     @TempDir
@@ -88,11 +87,10 @@ class BaseUploadsHandlerTest
                                                                      .with(testModuleOverride)));
         server = injector.getInstance(HttpServer.class);
         vertx = injector.getInstance(Vertx.class);
-        config = injector.getInstance(Configuration.class);
         client = WebClient.create(vertx);
 
         VertxTestContext context = new VertxTestContext();
-        server.listen(config.getPort(), config.getHost(), context.succeedingThenComplete());
+        server.listen(0, context.succeedingThenComplete());
 
         Metadata mockMetadata = mock(Metadata.class);
         KeyspaceMetadata mockKeyspaceMetadata = mock(KeyspaceMetadata.class);
@@ -180,7 +178,7 @@ class BaseUploadsHandlerTest
         @Provides
         public Configuration abstractConfig(InstancesConfig instancesConfig)
         {
-            when(mockConfiguration.getInstancesConfig()).thenReturn(instancesConfig);
+            when(mockConfiguration.instancesConfig()).thenReturn(instancesConfig);
             when(mockConfiguration.getHost()).thenReturn("127.0.0.1");
             when(mockConfiguration.getPort()).thenReturn(6475);
             when(mockConfiguration.getHealthCheckFrequencyMillis()).thenReturn(1000);

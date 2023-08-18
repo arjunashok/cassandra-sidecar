@@ -29,20 +29,33 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public class TokenRangeReplicasResponse
 {
+    private final Map<String, String> replicaState;
     private final List<ReplicaInfo> writeReplicas;
     private final List<ReplicaInfo> readReplicas;
 
     /**
      * Constructs token range replicas response object with given params.
      *
+     * @param replicaState  mapping replica to it's state information
      * @param writeReplicas list of write replicas {@link ReplicaInfo} instances breakdown by token range
      * @param readReplicas  list of read replica {@link ReplicaInfo} instances breakdown by token range
      */
-    public TokenRangeReplicasResponse(@JsonProperty("writeReplicas") List<ReplicaInfo> writeReplicas,
+    public TokenRangeReplicasResponse(@JsonProperty("replicaState") Map<String, String> replicaState,
+                                      @JsonProperty("writeReplicas") List<ReplicaInfo> writeReplicas,
                                       @JsonProperty("readReplicas") List<ReplicaInfo> readReplicas)
     {
+        this.replicaState = replicaState;
         this.writeReplicas = writeReplicas;
         this.readReplicas = readReplicas;
+    }
+
+    /**
+     * @return returns replica to it's state information mapping
+     */
+    @JsonProperty("replicaState")
+    public Map<String, String> replicaState()
+    {
+        return replicaState;
     }
 
     /**

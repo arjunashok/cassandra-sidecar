@@ -59,7 +59,7 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
     @Test
     void testInvalidUploadId(VertxTestContext context)
     {
-        client.put(config.getPort(), "localhost", "/api/v1/uploads/1234/keyspaces/ks/tables/tbl/import")
+        client.put(server.actualPort(), "localhost", "/api/v1/uploads/1234/keyspaces/ks/tables/tbl/import")
               .expect(ResponsePredicate.SC_BAD_REQUEST)
               .send(context.succeeding(response -> context.verify(() -> {
                   JsonObject error = response.bodyAsJsonObject();
@@ -75,13 +75,16 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
     void testInvalidKeyspace(VertxTestContext context)
     {
         UUID uploadId = UUID.randomUUID();
-        client.put(config.getPort(), "localhost", "/api/v1/uploads/" + uploadId + "/keyspaces/_n$ks_/tables/tbl/import")
+        client.put(server.actualPort(),
+                   "localhost",
+                   "/api/v1/uploads/" + uploadId + "/keyspaces/_n$ks_/tables/tbl/import")
               .expect(ResponsePredicate.SC_BAD_REQUEST)
               .send(context.succeeding(response -> context.verify(() -> {
                   JsonObject error = response.bodyAsJsonObject();
                   assertThat(error.getInteger("code")).isEqualTo(HttpResponseStatus.BAD_REQUEST.code());
                   assertThat(error.getString("status")).isEqualTo("Bad Request");
-                  assertThat(error.getString("message")).isEqualTo("Invalid characters in keyspace: _n$ks_");
+                  assertThat(error.getString("message"))
+                  .isEqualTo("Invalid characters in keyspace: _n$ks_");
                   context.completeNow();
               })));
     }
@@ -90,14 +93,15 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
     void testInvalidTable(VertxTestContext context)
     {
         UUID uploadId = UUID.randomUUID();
-        client.put(config.getPort(), "localhost",
+        client.put(server.actualPort(), "localhost",
                    "/api/v1/uploads/" + uploadId + "/keyspaces/ks/tables/_n$t_valid_/import")
               .expect(ResponsePredicate.SC_BAD_REQUEST)
               .send(context.succeeding(response -> context.verify(() -> {
                   JsonObject error = response.bodyAsJsonObject();
                   assertThat(error.getInteger("code")).isEqualTo(HttpResponseStatus.BAD_REQUEST.code());
                   assertThat(error.getString("status")).isEqualTo("Bad Request");
-                  assertThat(error.getString("message")).isEqualTo("Invalid characters in table name: _n$t_valid_");
+                  assertThat(error.getString("message"))
+                  .isEqualTo("Invalid characters in table name: _n$t_valid_");
                   context.completeNow();
               })));
     }
@@ -122,7 +126,9 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
         UUID uploadId = UUID.randomUUID();
         createStagedUploadFiles(uploadId);
 
-        client.put(config.getPort(), "localhost", "/api/v1/uploads/" + uploadId + "/keyspaces/ks/tables/table/import")
+        client.put(server.actualPort(),
+                   "localhost",
+                   "/api/v1/uploads/" + uploadId + "/keyspaces/ks/tables/table/import")
               .expect(ResponsePredicate.SC_SERVICE_UNAVAILABLE)
               .send(context.succeedingThenComplete());
     }
@@ -189,7 +195,7 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
 
         String requestURI = "/api/v1/uploads/" + uploadId + "/keyspaces/ks/tables/table/import";
         sendRequest(context,
-                    () -> client.put(config.getPort(), "localhost", requestURI)
+                    () -> client.put(server.actualPort(), "localhost", requestURI)
                                 .addQueryParam("resetLevel", "false"),
                     context.succeeding(response -> context.verify(() -> {
                         assertThat(response.statusCode()).isEqualTo(HttpResponseStatus.OK.code());
@@ -224,7 +230,7 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
 
         String requestURI = "/api/v1/uploads/" + uploadId + "/keyspaces/ks/tables/table/import";
         sendRequest(context,
-                    () -> client.put(config.getPort(), "localhost", requestURI)
+                    () -> client.put(server.actualPort(), "localhost", requestURI)
                                 .addQueryParam("clearRepaired", "false"),
                     context.succeeding(response -> context.verify(() -> {
                         assertThat(response.statusCode()).isEqualTo(HttpResponseStatus.OK.code());
@@ -259,7 +265,7 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
 
         String requestURI = "/api/v1/uploads/" + uploadId + "/keyspaces/ks/tables/table/import";
         sendRequest(context,
-                    () -> client.put(config.getPort(), "localhost", requestURI)
+                    () -> client.put(server.actualPort(), "localhost", requestURI)
                                 .addQueryParam("verifySSTables", "false"),
                     context.succeeding(response -> context.verify(() -> {
                         assertThat(response.statusCode()).isEqualTo(HttpResponseStatus.OK.code());
@@ -293,7 +299,7 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
 
         String requestURI = "/api/v1/uploads/" + uploadId + "/keyspaces/ks/tables/table/import";
         sendRequest(context,
-                    () -> client.put(config.getPort(), "localhost", requestURI)
+                    () -> client.put(server.actualPort(), "localhost", requestURI)
                                 .addQueryParam("extendedVerify", "false"),
                     context.succeeding(response -> context.verify(() -> {
                         assertThat(response.statusCode()).isEqualTo(HttpResponseStatus.OK.code());
@@ -326,7 +332,7 @@ public class SSTableImportHandlerTest extends BaseUploadsHandlerTest
     throws InterruptedException
     {
         sendRequest(context,
-                    () -> client.put(config.getPort(), "localhost", requestURI),
+                    () -> client.put(server.actualPort(), "localhost", requestURI),
                     context.succeeding(response -> context.verify(() -> {
                         validator.accept(response);
                         context.completeNow();

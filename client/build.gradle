@@ -42,6 +42,8 @@ test {
     testLogging {
         events "passed", "skipped", "failed"
     }
+// Uncomment below to run unit tests in parallel
+//    maxParallelForks = Runtime.runtime.availableProcessors()
     reports {
         junitXml.enabled = true
         def destDir = Paths.get(rootProject.rootDir.absolutePath, "build", "test-results", "client").toFile()

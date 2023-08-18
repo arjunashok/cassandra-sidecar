@@ -260,7 +260,9 @@ abstract class SidecarClientTest
     public void testTokenRangeReplicasFromReplicaSet() throws Exception
     {
         String keyspace = "test";
-        String tokenRangeReplicasAsString = "{\"writeReplicas\":[{\"start\":\"-9223372036854775808\"," +
+        String tokenRangeReplicasAsString = "{\"replicaState\":{" +
+                                            "\"127.0.0.1:7000\":\"NORMAL\"}," +
+                                            "\"writeReplicas\":[{\"start\":\"-9223372036854775808\"," +
                                             "\"end\":\"9223372036854775807\",\"replicasByDatacenter\":" +
                                             "{\"datacenter1\":[\"127.0.0.1:7000\"]}}],\"readReplicas\":" +
                                             "[{\"start\":\"-9223372036854775808\",\"end\":\"9223372036854775807\"," +
@@ -273,6 +275,7 @@ abstract class SidecarClientTest
         assertThat(result).isNotNull();
         assertThat(result.writeReplicas()).hasSize(1);
         assertThat(result.readReplicas()).hasSize(1);
+        assertThat(result.replicaState()).hasSize(1);
 
         validateResponseServed(ApiEndpointsV1.KEYSPACE_TOKEN_MAPPING_ROUTE.replaceAll(
         ApiEndpointsV1.KEYSPACE_PATH_PARAM, keyspace));

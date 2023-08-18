@@ -67,7 +67,7 @@ jobs:
      - checkout
 
      - run: BRANCHES="cassandra-4.0 cassandra-4.1" scripts/build-dtest-jars.sh
-     - run: echo 'export DTEST_JAR=$(cd dtest-jars && find . -name 'dtest-4.1*.jar' -maxdepth 1)' >> "$BASH_ENV"
+     - run: echo 'export DTEST_JAR=$(find dtest-jars -name 'dtest-4.1*.jar' -type f -maxdepth 1 -exec basename {} \;)' >> "$BASH_ENV"
      - run: ./gradlew --info check --stacktrace -Dcassandra.sidecar.versions_to_test="4.0,4.1"
 
      - store_artifacts:
@@ -86,6 +86,7 @@ jobs:
       - checkout
 
       - run: CASSANDRA_USE_JDK11=true scripts/build-dtest-jars.sh
+      - run: echo 'export DTEST_JAR=$(find dtest-jars -name 'dtest-5.*.jar' -type f -maxdepth 1 -exec basename {} \;)' >> "$BASH_ENV"
       - run: ./gradlew --info check --stacktrace
 
       - store_artifacts:

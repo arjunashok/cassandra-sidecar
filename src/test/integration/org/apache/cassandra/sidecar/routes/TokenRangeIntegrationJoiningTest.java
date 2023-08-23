@@ -57,7 +57,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(VertxExtension.class)
 public class TokenRangeIntegrationJoiningTest extends BaseTokenRangeIntegrationTest
 {
-    @CassandraIntegrationTest(nodesPerDc = 3, newNodesPerDc = 1, network = true, gossip = true, buildCluster = false)
+    @CassandraIntegrationTest(nodesPerDc = 5, newNodesPerDc = 1, network = true, gossip = true, buildCluster = false)
     void retrieveMappingWithJoiningNode(VertxTestContext context,
                                         ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
@@ -241,7 +241,7 @@ public class TokenRangeIntegrationJoiningTest extends BaseTokenRangeIntegrationT
                                                                                     annotation.newNodesPerDc(),
                                                                                     1);
 
-                List<Range<BigInteger>> expectedRanges = generateExpectedRanges(tokenSupplier, finalNodeCount);
+                List<Range<BigInteger>> expectedRanges = generateExpectedRanges();
                 // New split ranges resulting from joining nodes and corresponding tokens
                 List<Range<BigInteger>> splitRanges = extractSplitRanges(annotation.newNodesPerDc() *
                                                                          annotation.numDcs(),

@@ -23,7 +23,9 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BiConsumer;
@@ -54,7 +56,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(VertxExtension.class)
 public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationTest
 {
-    @CassandraIntegrationTest(nodesPerDc = 4, network = true, gossip = true, buildCluster = false)
+    @CassandraIntegrationTest(nodesPerDc = 5, network = true, gossip = true, buildCluster = false)
     void retrieveMappingWithKeyspaceLeavingNode(VertxTestContext context,
                                                 ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
@@ -63,7 +65,8 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                1,
                                BBHelperSingleLeavingNode::install,
                                BBHelperSingleLeavingNode.TRANSIENT_STATE_START,
-                               BBHelperSingleLeavingNode.TRANSIENT_STATE_END);
+                               BBHelperSingleLeavingNode.TRANSIENT_STATE_END,
+                               generateExpectedRangeMappingSingleLeavingNode());
     }
 
     @CassandraIntegrationTest(nodesPerDc = 5, network = true, gossip = true, buildCluster = false)
@@ -75,7 +78,8 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                2,
                                BBHelperMultipleLeavingNodes::install,
                                BBHelperMultipleLeavingNodes.TRANSIENT_STATE_START,
-                               BBHelperMultipleLeavingNodes.TRANSIENT_STATE_END);
+                               BBHelperMultipleLeavingNodes.TRANSIENT_STATE_END,
+                               generateExpectedRangeMappingMultipleLeavingNodes());
     }
 
     @CassandraIntegrationTest(nodesPerDc = 6, network = true, gossip = true, buildCluster = false)
@@ -87,7 +91,8 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                3,
                                BBHelperHalveClusterSize::install,
                                BBHelperHalveClusterSize.TRANSIENT_STATE_START,
-                               BBHelperHalveClusterSize.TRANSIENT_STATE_END);
+                               BBHelperHalveClusterSize.TRANSIENT_STATE_END,
+                               generateExpectedRangeMappingHalveClusterSize());
     }
 
     @CassandraIntegrationTest(
@@ -109,7 +114,8 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                leavingNodesPerDC,
                                BBHelperLeavingNodesMultiDC.TRANSIENT_STATE_START,
                                BBHelperLeavingNodesMultiDC.TRANSIENT_STATE_END,
-                               cluster);
+                               cluster,
+                               generateExpectedRangeMappingLeavingNodeMultiDC());
     }
 
     @CassandraIntegrationTest(nodesPerDc = 6, numDcs = 2, network = true, gossip = true, buildCluster = false)
@@ -125,11 +131,14 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                                        BBHelperHalveClusterMultiDC::install,
                                                        cassandraTestContext);
 
+        Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings
+        = generateExpectedRangeHalveClusterSizeMultiDC();
         runLeavingTestScenario(context,
                                leavingNodesPerDC,
                                BBHelperHalveClusterMultiDC.TRANSIENT_STATE_START,
                                BBHelperHalveClusterMultiDC.TRANSIENT_STATE_END,
-                               cluster);
+                               cluster,
+                               expectedRangeMappings);
     }
 
     void runLeavingTestScenario(VertxTestContext context,
@@ -137,7 +146,9 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                 int leavingNodesPerDC,
                                 BiConsumer<ClassLoader, Integer> instanceInitializer,
                                 CountDownLatch transientStateStart,
-                                CountDownLatch transientStateEnd) throws Exception
+                                CountDownLatch transientStateEnd,
+                                Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings)
+    throws Exception
     {
 
         UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(
@@ -147,19 +158,23 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                leavingNodesPerDC,
                                transientStateStart,
                                transientStateEnd,
-                               cluster);
+                               cluster,
+                               expectedRangeMappings);
     }
 
     void runLeavingTestScenario(VertxTestContext context,
                                 int leavingNodesPerDC,
                                 CountDownLatch transientStateStart,
                                 CountDownLatch transientStateEnd,
-                                UpgradeableCluster cluster) throws Exception
+                                UpgradeableCluster cluster,
+                                Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings)
+    throws Exception
     {
         try
         {
             CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
             Set<String> dcReplication;
+
             if (annotation.numDcs() > 1)
             {
                 createTestKeyspace(ImmutableMap.of("replication_factor", DEFAULT_RF));
@@ -205,7 +220,6 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                                                                     annotation.newNodesPerDc(),
                                                                                     1);
 
-                List<Range<BigInteger>> expectedRanges = generateExpectedRanges(tokenSupplier, finalNodeCount);
                 int initialNodeCount = annotation.nodesPerDc() * annotation.numDcs();
                 validateNodeStates(mappingResponse,
                                    dcReplication,
@@ -213,8 +227,8 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                                    nodeNumber <= (initialNodeCount - (leavingNodesPerDC * annotation.numDcs())) ?
                                    "Normal" :
                                    "Leaving");
-                validateTokenRanges(mappingResponse, expectedRanges);
-                validateReplicaMapping(mappingResponse, leavingNodes);
+                validateTokenRanges(mappingResponse, generateExpectedRanges());
+                validateReplicaMapping(mappingResponse, leavingNodes, expectedRangeMappings);
 
                 context.completeNow();
             });
@@ -228,8 +242,341 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
         }
     }
 
+    /**
+     * Generates expected token range and replica mappings specific to the test case involving a 5 node cluster
+     * with the last node leaving the cluster
+     *
+     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D
+     *
+     * Ranges that including leaving node replicas will have [RF + no. leaving nodes in replica-set] replicas with
+     * the new replicas being the existing nodes in ring-order.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D (with D being the leaving node)
+     * Expected Range 2 - B, C, D, A (With A taking over the range of the leaving node)
+     */
+    private HashMap<String, Map<Range<BigInteger>, List<String>>> generateExpectedRangeMappingSingleLeavingNode()
+    {
+        List<Range<BigInteger>> expectedRanges = generateExpectedRanges();
+        Map<Range<BigInteger>, List<String>> mapping = new HashMap<>();
+        mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+        mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.3:7012", "127.0.0.4:7012"));
+
+        mapping.put(expectedRanges.get(2),
+                    Arrays.asList("127.0.0.3:7012", "127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.1:7012"));
+        mapping.put(expectedRanges.get(3),
+                    Arrays.asList("127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.1:7012", "127.0.0.2:7012"));
+        mapping.put(expectedRanges.get(4),
+                    Arrays.asList("127.0.0.5:7012", "127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+
+        mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+
+        return new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+        {
+            {
+                put("datacenter1", mapping);
+            }
+        };
+    }
+
+    /**
+     * Generates expected token range and replica mappings specific to the test case involving a 5 node cluster
+     * with the last 2 nodes leaving the cluster
+     *
+     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D
+     *
+     * Ranges that including leaving node replicas will have [RF + no. leaving nodes in replica-set] replicas with
+     * the new replicas being the existing nodes in ring-order.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D (with D being the leaving node)
+     * Expected Range 2 - B, C, D, A (With A taking over the range of the leaving node)
+
+     */
+
+    private HashMap<String, Map<Range<BigInteger>, List<String>>> generateExpectedRangeMappingMultipleLeavingNodes()
+    {
+        List<Range<BigInteger>> expectedRanges = generateExpectedRanges();
+        Map<Range<BigInteger>, List<String>> mapping = new HashMap<>();
+        mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+        mapping.put(expectedRanges.get(1),
+                    Arrays.asList("127.0.0.2:7012", "127.0.0.3:7012", "127.0.0.4:7012", "127.0.0.1:7012"));
+        mapping.put(
+        expectedRanges.get(2),
+        Arrays.asList("127.0.0.3:7012", "127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.2:7012", "127.0.0.1:7012"));
+        mapping.put(
+        expectedRanges.get(3),
+        Arrays.asList("127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+        mapping.put(
+        expectedRanges.get(4),
+        Arrays.asList("127.0.0.5:7012", "127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+        mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+
+        return new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+        {
+            {
+                put("datacenter1", mapping);
+            }
+        };
+    }
+
+    /**
+     * Generates expected token range and replica mappings specific to the test case involving a 6 node cluster
+     * with the last 3 nodes leaving the cluster
+     *
+     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D
+     *
+     * Ranges that including leaving node replicas will have [RF + no. leaving nodes in replica-set] replicas with
+     * the new replicas being the existing nodes in ring-order.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D (with D being the leaving node)
+     * Expected Range 2 - B, C, D, A (With A taking over the range of the leaving node)
+
+     */
+
+    private Map<String, Map<Range<BigInteger>, List<String>>> generateExpectedRangeMappingHalveClusterSize()
+    {
+        List<Range<BigInteger>> expectedRanges = generateExpectedRanges();
+        Map<Range<BigInteger>, List<String>> mapping = new HashMap<>();
+        mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+        mapping.put(
+        expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.3:7012", "127.0.0.4:7012", "127.0.0.1:7012"));
+        mapping.put(
+        expectedRanges.get(2),
+        Arrays.asList("127.0.0.3:7012", "127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.1:7012", "127.0.0.2:7012"));
+        mapping.put(
+        expectedRanges.get(3),
+        Arrays.asList("127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.6:7012", "127.0.0.1:7012", "127.0.0.2:7012",
+                      "127.0.0.3:7012"));
+        mapping.put(
+        expectedRanges.get(4),
+        Arrays.asList("127.0.0.5:7012", "127.0.0.6:7012", "127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+        mapping.put(
+        expectedRanges.get(5), Arrays.asList("127.0.0.6:7012", "127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+        mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+
+        return new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+        {
+            {
+                put("datacenter1", mapping);
+            }
+        };
+    }
+
+    /**
+     * Generates expected token range and replica mappings specific to the test case involving a 10 node cluster
+     * across 2 DCs with the last 2 nodes leaving the cluster (1 per DC), with RF 3
+     *
+     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D
+     *
+     * In a multi-DC scenario, a single range will have nodes from both DCs. The replicas are grouped by DC here
+     * to allow per-DC validation as returned from the sidecar endpoint.
+     *
+     * Ranges that including leaving node replicas will have [RF + no. leaving nodes in replica-set] replicas with
+     * the new replicas being the existing nodes in ring-order.
+     *
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D (with D being the leaving node)
+     * Expected Range 2 - B, C, D, A (With A taking over the range of the leaving node)
+     */
+
+    private Map<String, Map<Range<BigInteger>, List<String>>> generateExpectedRangeMappingLeavingNodeMultiDC()
+    {
+        List<Range<BigInteger>> expectedRanges = generateExpectedRanges();
+        Map<Range<BigInteger>, List<String>> dc1Mapping = new HashMap<>();
+        Map<Range<BigInteger>, List<String>> dc2Mapping = new HashMap<>();
+
+        dc1Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012"));
+        dc2Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012"));
+        dc2Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012"));
+
+        dc1Mapping.put(expectedRanges.get(3),
+                       Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012"));
+        dc2Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012"));
+
+        dc1Mapping.put(expectedRanges.get(4),
+                       Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012"));
+        dc2Mapping.put(expectedRanges.get(4),
+                       Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012"));
+
+        dc1Mapping.put(expectedRanges.get(5),
+                       Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012"));
+        dc2Mapping.put(expectedRanges.get(5),
+                       Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012"));
+
+        dc1Mapping.put(expectedRanges.get(6),
+                       Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012"));
+        dc2Mapping.put(expectedRanges.get(6),
+                       Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012"));
+
+        dc1Mapping.put(expectedRanges.get(7),
+                       Arrays.asList("127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(7),
+                       Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012"));
+
+        dc1Mapping.put(expectedRanges.get(8),
+                       Arrays.asList("127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(8),
+                       Arrays.asList("127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(9),
+                       Arrays.asList("127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        Map<String, Map<Range<BigInteger>, List<String>>> multiDCMapping
+        = new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+        {
+            {
+                put("datacenter1", dc1Mapping);
+                put("datacenter2", dc2Mapping);
+            }
+        };
+        return multiDCMapping;
+    }
+
+    /**
+     * Generates expected token range and replica mappings specific to the test case involving a 12 node cluster
+     * across 2 DCs with the last 6 nodes leaving the cluster (3 per DC)
+     *
+     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D
+     *
+     * In a multi-DC scenario, a single range will have nodes from both DCs. The replicas are grouped by DC here
+     * to allow per-DC validation as returned from the sidecar endpoint.
+     *
+     * Ranges that including leaving node replicas will have [RF + no. leaving nodes in replica-set] replicas with
+     * the new replicas being the existing nodes in ring-order.
+     *
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D (with D being the leaving node)
+     * Expected Range 2 - B, C, D, A (With A taking over the range of the leaving node)
+     */
+
+    private Map<String, Map<Range<BigInteger>, List<String>>> generateExpectedRangeHalveClusterSizeMultiDC()
+    {
+        List<Range<BigInteger>> expectedRanges = generateExpectedRanges();
+        Map<Range<BigInteger>, List<String>> dc1Mapping = new HashMap<>();
+        Map<Range<BigInteger>, List<String>> dc2Mapping = new HashMap<>();
+
+        dc1Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(1),
+                       Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.1:7012"));
+        dc2Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(2),
+                       Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.1:7012"));
+        dc2Mapping.put(expectedRanges.get(2),
+                       Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.2:7012"));
+
+        dc1Mapping.put(
+        expectedRanges.get(3),
+        Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012"));
+        dc2Mapping.put(expectedRanges.get(3),
+                       Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.2:7012"));
+
+        dc1Mapping.put(
+        expectedRanges.get(4),
+        Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012"));
+        dc2Mapping.put(
+        expectedRanges.get(4),
+        Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012"));
+
+        dc1Mapping.put(
+        expectedRanges.get(5),
+        Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.11:7012", "127.0.0.1:7012", "127.0.0.3:7012",
+                      "127.0.0.5:7012"));
+        dc2Mapping.put(
+        expectedRanges.get(5),
+        Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012"));
+
+        dc1Mapping.put(
+        expectedRanges.get(6),
+        Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.11:7012", "127.0.0.1:7012", "127.0.0.3:7012",
+                      "127.0.0.5:7012"));
+        dc2Mapping.put(
+        expectedRanges.get(6),
+        Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.12:7012", "127.0.0.2:7012", "127.0.0.4:7012",
+                      "127.0.0.6:7012"));
+
+        dc1Mapping.put(
+        expectedRanges.get(7),
+        Arrays.asList("127.0.0.9:7012", "127.0.0.11:7012", "127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(
+        expectedRanges.get(7),
+        Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.12:7012", "127.0.0.2:7012", "127.0.0.4:7012",
+                      "127.0.0.6:7012"));
+
+        dc1Mapping.put(
+        expectedRanges.get(8),
+        Arrays.asList("127.0.0.9:7012", "127.0.0.11:7012", "127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(
+        expectedRanges.get(8),
+        Arrays.asList("127.0.0.10:7012", "127.0.0.12:7012", "127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(9),
+                       Arrays.asList("127.0.0.11:7012", "127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(
+        expectedRanges.get(9),
+        Arrays.asList("127.0.0.10:7012", "127.0.0.12:7012", "127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(10),
+                       Arrays.asList("127.0.0.11:7012", "127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(10),
+                       Arrays.asList("127.0.0.12:7012", "127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(11), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(11),
+                       Arrays.asList("127.0.0.12:7012", "127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        dc1Mapping.put(expectedRanges.get(12), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(12), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+
+        Map<String, Map<Range<BigInteger>, List<String>>> multiDCMapping
+        = new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+        {
+            {
+                put("datacenter1", dc1Mapping);
+                put("datacenter2", dc2Mapping);
+            }
+        };
+        return multiDCMapping;
+    }
+
     private void validateReplicaMapping(TokenRangeReplicasResponse mappingResponse,
-                                        List<IUpgradeableInstance> leavingNodes)
+                                        List<IUpgradeableInstance> leavingNodes,
+                                        Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings)
     {
         List<String> transientNodeAddresses = leavingNodes.stream().map(i -> {
             InetSocketAddress address = i.config().broadcastAddress();
@@ -242,5 +589,32 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
         Set<String> readReplicaInstances = instancesFromReplicaSet(mappingResponse.readReplicas());
         assertThat(readReplicaInstances).containsAll(transientNodeAddresses);
         assertThat(writeReplicaInstances).containsAll(transientNodeAddresses);
+
+        validateWriteReplicaMappings(mappingResponse.writeReplicas(), expectedRangeMappings);
+    }
+
+    private void validateWriteReplicaMappings(List<TokenRangeReplicasResponse.ReplicaInfo> writeReplicas,
+                                              Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMapping)
+    {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        assertThat(writeReplicas).hasSize(expectedRangeMapping.get("datacenter1").size());
+        for (TokenRangeReplicasResponse.ReplicaInfo r: writeReplicas)
+        {
+            Range<BigInteger> range = Range.openClosed(BigInteger.valueOf(Long.parseLong(r.start())),
+                                                       BigInteger.valueOf(Long.parseLong(r.end())));
+            assertThat(expectedRangeMapping).containsKey("datacenter1");
+            assertThat(expectedRangeMapping.get("datacenter1")).containsKey(range);
+            // Replicaset for the same range match expected
+            assertThat(r.replicasByDatacenter().get("datacenter1"))
+            .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter1").get(range));
+
+            if (annotation.numDcs() > 1)
+            {
+                assertThat(expectedRangeMapping).containsKey("datacenter2");
+                assertThat(expectedRangeMapping.get("datacenter2")).containsKey(range);
+                assertThat(r.replicasByDatacenter().get("datacenter2"))
+                .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter2").get(range));
+            }
+        }
     }
 }

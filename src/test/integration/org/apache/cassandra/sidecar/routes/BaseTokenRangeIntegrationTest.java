@@ -151,8 +151,19 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
         });
     }
 
-    protected List<Range<BigInteger>> generateExpectedRanges(TokenSupplier tokenSupplier, int finalNodeCount)
+    protected List<Range<BigInteger>> generateExpectedRanges()
     {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        int finalNodeCount = (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs();
+        TokenSupplier tokenSupplier = (annotation.numDcs() > 1) ?
+                                      MultiDcTokenSupplier.evenlyDistributedTokens(
+                                      annotation.nodesPerDc() + annotation.newNodesPerDc(),
+                                      annotation.numDcs(),
+                                      1) :
+                                      TokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc() +
+                                                                            annotation.newNodesPerDc(),
+                                                                            1);
+
         List<Range<BigInteger>> expectedRanges = new ArrayList<>();
         BigInteger startToken = Partitioner.Murmur3.minToken;
         BigInteger endToken = Partitioner.Murmur3.maxToken;
@@ -232,7 +243,7 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
         {
             // Test case involves 3 node cluster with 1 joining node
             // We intercept the bootstrap of the leaving node (4) to validate token ranges
-            if (nodeNumber == 4)
+            if (nodeNumber == 6)
             {
                 TypePool typePool = TypePool.Default.of(cl);
                 TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
@@ -347,16 +358,15 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
 
         public static void install(ClassLoader cl, Integer nodeNumber)
         {
-            // Test case involves 4 node cluster with 1 leaving node
-            // We intercept the shutdown of the leaving node (4) to validate token ranges
-            if (nodeNumber == 4)
+            // Test case involves 5 node cluster with 1 leaving node
+            // We intercept the shutdown of the leaving node (5) to validate token ranges
+            if (nodeNumber == 5)
             {
                 TypePool typePool = TypePool.Default.of(cl);
                 TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
                                                       .resolve();
                 new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
                                .method(named("unbootstrap"))
-                               // .and(takesArguments(1)))
                                .intercept(MethodDelegation.to(BBHelperSingleLeavingNode.class))
                                // Defer class loading until all dependencies are loaded
                                .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
@@ -393,7 +403,6 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
                                                       .resolve();
                 new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
                                .method(named("unbootstrap"))
-                               // .and(takesArguments(1)))
                                .intercept(MethodDelegation.to(BBHelperMultipleLeavingNodes.class))
                                // Defer class loading until all dependencies are loaded
                                .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)

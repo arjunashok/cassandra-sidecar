@@ -592,29 +592,4 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
 
         validateWriteReplicaMappings(mappingResponse.writeReplicas(), expectedRangeMappings);
     }
-
-    private void validateWriteReplicaMappings(List<TokenRangeReplicasResponse.ReplicaInfo> writeReplicas,
-                                              Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMapping)
-    {
-        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        assertThat(writeReplicas).hasSize(expectedRangeMapping.get("datacenter1").size());
-        for (TokenRangeReplicasResponse.ReplicaInfo r: writeReplicas)
-        {
-            Range<BigInteger> range = Range.openClosed(BigInteger.valueOf(Long.parseLong(r.start())),
-                                                       BigInteger.valueOf(Long.parseLong(r.end())));
-            assertThat(expectedRangeMapping).containsKey("datacenter1");
-            assertThat(expectedRangeMapping.get("datacenter1")).containsKey(range);
-            // Replicaset for the same range match expected
-            assertThat(r.replicasByDatacenter().get("datacenter1"))
-            .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter1").get(range));
-
-            if (annotation.numDcs() > 1)
-            {
-                assertThat(expectedRangeMapping).containsKey("datacenter2");
-                assertThat(expectedRangeMapping.get("datacenter2")).containsKey(range);
-                assertThat(r.replicasByDatacenter().get("datacenter2"))
-                .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter2").get(range));
-            }
-        }
-    }
 }

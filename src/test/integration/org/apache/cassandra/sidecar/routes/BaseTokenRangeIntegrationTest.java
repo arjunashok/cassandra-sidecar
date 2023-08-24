@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -62,6 +63,8 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 import static org.apache.cassandra.distributed.shared.NetworkTopology.dcAndRack;
 import static org.apache.cassandra.distributed.shared.NetworkTopology.networkTopology;
+import static org.apache.cassandra.sidecar.routes.TokenRangeIntegrationMovingTest.MOVING_NODE_IDX;
+import static org.apache.cassandra.sidecar.routes.TokenRangeIntegrationMovingTest.MULTIDC_MOVING_NODE_IDX;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -189,6 +192,31 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
                        .flatMap(Collection::stream)
                        .flatMap(Collection::stream)
                        .collect(Collectors.toSet());
+    }
+
+    protected void validateWriteReplicaMappings(List<TokenRangeReplicasResponse.ReplicaInfo> writeReplicas,
+                                              Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMapping)
+    {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        assertThat(writeReplicas).hasSize(expectedRangeMapping.get("datacenter1").size());
+        for (TokenRangeReplicasResponse.ReplicaInfo r: writeReplicas)
+        {
+            Range<BigInteger> range = Range.openClosed(BigInteger.valueOf(Long.parseLong(r.start())),
+                                                       BigInteger.valueOf(Long.parseLong(r.end())));
+            assertThat(expectedRangeMapping).containsKey("datacenter1");
+            assertThat(expectedRangeMapping.get("datacenter1")).containsKey(range);
+            // Replicaset for the same range match expected
+            assertThat(r.replicasByDatacenter().get("datacenter1"))
+            .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter1").get(range));
+
+            if (annotation.numDcs() > 1)
+            {
+                assertThat(expectedRangeMapping).containsKey("datacenter2");
+                assertThat(expectedRangeMapping.get("datacenter2")).containsKey(range);
+                assertThat(r.replicasByDatacenter().get("datacenter2"))
+                .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter2").get(range));
+            }
+        }
     }
 
     void retrieveMappingWithKeyspace(VertxTestContext context, String keyspace,
@@ -420,6 +448,42 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
     }
 
     /**
+     * ByteBuddy Helper for a multiDC moving node
+     */
+    @Shared
+    public static class BBHelperMovingNodeMultiDC
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(1);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(1);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Moving the 5th node in the test case
+            if (nodeNumber == MULTIDC_MOVING_NODE_IDX)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.RangeRelocator")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("stream"))
+                               .intercept(MethodDelegation.to(BBHelperMovingNode.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static Future<?> stream(@SuperCall Callable<Future<?>> orig) throws Exception
+        {
+            Future<?> res = orig.call();
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            return res;
+        }
+    }
+
+    /**
      * ByteBuddy Helper for a single moving node
      */
     @Shared
@@ -431,7 +495,7 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
         public static void install(ClassLoader cl, Integer nodeNumber)
         {
             // Moving the 5th node in the test case
-            if (nodeNumber == 5)
+            if (nodeNumber == MOVING_NODE_IDX)
             {
                 TypePool typePool = TypePool.Default.of(cl);
                 TypeDescription description = typePool.describe("org.apache.cassandra.service.RangeRelocator")

@@ -24,7 +24,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -57,7 +59,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(VertxExtension.class)
 public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTest
 {
-    private static final int MOVING_NODE_IDX = 5;
+    public static final int MOVING_NODE_IDX = 5;
+    public static final int MULTIDC_MOVING_NODE_IDX = 10;
 
     @CassandraIntegrationTest(nodesPerDc = 5, network = true, gossip = true, buildCluster = false)
     void retrieveMappingWithKeyspaceMovingNode(VertxTestContext context,
@@ -67,10 +70,28 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
         UpgradeableCluster cluster =
         cassandraTestContext.configureAndStartCluster(builder ->
                                                       builder.withInstanceInitializer(BBHelperMovingNode::install));
+
+        long moveTarget = getMoveTargetToken(cluster);
         runMovingTestScenario(context,
                               BBHelperMovingNode.TRANSIENT_STATE_START,
                               BBHelperMovingNode.TRANSIENT_STATE_END,
-                              cluster);
+                              cluster,
+                              generateExpectedRangeMappingMovingNode(moveTarget),
+                              moveTarget);
+    }
+
+    private long getMoveTargetToken(UpgradeableCluster cluster)
+    {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        IUpgradeableInstance seed = cluster.get(1);
+        // The target token to move the node to is calculated by adding an offset to the seed node token which
+        // is half of the range between 2 tokens.
+        // For multi-DC case (specifically 2 DCs), since neighbouring tokens can be consecutive, we use tokens 1
+        // and 3 to calculate the offset
+        int nextIndex = (annotation.numDcs() > 1) ? 3 : 2;
+        long t2 = Long.parseLong(seed.config().getString("initial_token"));
+        long t3 = Long.parseLong(cluster.get(nextIndex).config().getString("initial_token"));
+        return (t2 + ((t3 - t2) / 2));
     }
 
     @CassandraIntegrationTest(nodesPerDc = 5, numDcs = 2, network = true, gossip = true, buildCluster = false)
@@ -79,20 +100,18 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
     {
 
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        TokenSupplier mdcTokenSupplier = MultiDcTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
-                                                                                      annotation.numDcs(),
-                                                                                      1);
-        UpgradeableCluster cluster =
-        cassandraTestContext.configureAndStartCluster(builder -> {
-                                                          builder.withInstanceInitializer(BBHelperMovingNode::install);
-                                                          builder.withTokenSupplier(mdcTokenSupplier);
-                                                      }
-        );
+        UpgradeableCluster cluster = getMultiDCCluster(annotation.nodesPerDc(),
+                                                       annotation.numDcs(),
+                                                       BBHelperMovingNodeMultiDC::install,
+                                                       cassandraTestContext);
 
+        long moveTarget = getMoveTargetToken(cluster);
         runMovingTestScenario(context,
-                              BBHelperMovingNode.TRANSIENT_STATE_START,
-                              BBHelperMovingNode.TRANSIENT_STATE_END,
-                              cluster);
+                              BBHelperMovingNodeMultiDC.TRANSIENT_STATE_START,
+                              BBHelperMovingNodeMultiDC.TRANSIENT_STATE_END,
+                              cluster,
+                              generateExpectedRangeMappingMovingNodeMultiDC(moveTarget),
+                              moveTarget);
     }
 
     // TODO: Multiple replica-safe node movements in same DC, different DCs
@@ -100,7 +119,9 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
     void runMovingTestScenario(VertxTestContext context,
                                CountDownLatch transientStateStart,
                                CountDownLatch transientStateEnd,
-                               UpgradeableCluster cluster) throws Exception
+                               UpgradeableCluster cluster,
+                               Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings,
+                               long moveTargetToken) throws Exception
     {
         try
         {
@@ -118,25 +139,16 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
             }
 
             IUpgradeableInstance seed = cluster.get(1);
+            final int movingNodeIndex = (annotation.numDcs() > 1) ? MULTIDC_MOVING_NODE_IDX : MOVING_NODE_IDX;
 
-            // The target token to move the node to is calculated by adding an offset which is half of the range
-            // between 2 tokens.
-            // For multi-DC case (specifically 2 DCs), since neighbouring tokens can be consecutive, we use tokens 1
-            // and 3 to calcualte the offset
-            int nextIndex = (annotation.numDcs() > 1) ? 3 : 2;
-            long t2 = Long.parseLong(seed.config().getString("initial_token"));
-            long t3 = Long.parseLong(cluster.get(nextIndex).config().getString("initial_token"));
-            long moveTo = (t2 + ((t3 - t2) / 2));
-
-            IUpgradeableInstance movingNode = cluster.get(MOVING_NODE_IDX);
-            new Thread(() -> movingNode.nodetoolResult("move", "--", Long.toString(moveTo))
+            IUpgradeableInstance movingNode = cluster.get(movingNodeIndex);
+            new Thread(() -> movingNode.nodetoolResult("move", "--", Long.toString(moveTargetToken))
                                        .asserts()
                                        .success()).start();
 
             // Wait until nodes have reached expected state
             Uninterruptibles.awaitUninterruptibly(transientStateStart, 2, TimeUnit.MINUTES);
             ClusterUtils.awaitRingState(seed, movingNode, "Moving");
-//            ClusterUtils.assertRingState(seed, movingNode, "Moving");
 
             retrieveMappingWithKeyspace(context, TEST_KEYSPACE, response -> {
                 assertThat(response.statusCode()).isEqualTo(HttpResponseStatus.OK.code());
@@ -147,12 +159,12 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
 
                 validateNodeStates(mappingResponse,
                                    dcReplication,
-                                   nodeNumber -> nodeNumber == MOVING_NODE_IDX ? "Moving" : "Normal");
+                                   nodeNumber -> nodeNumber == movingNodeIndex ? "Moving" : "Normal");
                 List<Range<BigInteger>> expectedRanges = getMovingNodesExpectedRanges(annotation.nodesPerDc(),
                                                                                       annotation.numDcs(),
-                                                                                      moveTo);
+                                                                                      moveTargetToken);
                 validateTokenRanges(mappingResponse, expectedRanges);
-                validateReplicaMapping(mappingResponse, movingNode, moveTo);
+                validateReplicaMapping(mappingResponse, movingNode, moveTargetToken, expectedRangeMappings);
 
                 context.completeNow();
             });
@@ -166,7 +178,8 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
 
     private void validateReplicaMapping(TokenRangeReplicasResponse mappingResponse,
                                         IUpgradeableInstance movingNode,
-                                        long moveTo)
+                                        long moveTo,
+                                        Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings)
     {
         InetSocketAddress address = movingNode.config().broadcastAddress();
         String expectedAddress = address.getAddress().getHostAddress() +
@@ -189,6 +202,8 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
         assertThat(replicasInRange).contains(expectedAddress);
         assertThat(readReplicaInstances).contains(expectedAddress);
         assertThat(writeReplicaInstances).contains(expectedAddress);
+
+        validateWriteReplicaMappings(mappingResponse.writeReplicas(), expectedRangeMappings);
     }
 
     private List<Range<BigInteger>> getMovingNodesExpectedRanges(int initialNodeCount, int numDcs, long moveTo)
@@ -228,5 +243,154 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
         expectedRanges.add(Range.openClosed(prevToken, endToken));
 
         return expectedRanges;
+    }
+
+    /**
+     * Generates expected token range and replica mappings specific to the test case involving a 5 node cluster
+     * with the last node being moved by assigning it a different token
+     *
+     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D
+     *
+     * In this test case, the moved node is inserted between nodes 1 and 2, resulting in splitting the ranges.
+     */
+    private Map<String, Map<Range<BigInteger>, List<String>>> generateExpectedRangeMappingMovingNode(long moveTarget)
+    {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        List<Range<BigInteger>> expectedRanges = getMovingNodesExpectedRanges(annotation.nodesPerDc(),
+                                                                              annotation.numDcs(),
+                                                                              moveTarget);
+        Map<Range<BigInteger>, List<String>> mapping = new HashMap<>();
+        // Initial range from Partitioner's MIN_TOKEN. This will include one of the replicas of the moved node since
+        // it is adjacent to the range where it is being introduced.
+        mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012",
+                                                         "127.0.0.5:7012"));
+        // Range including the token of the moved node. Node 5 is added here (and the preceding 3 ranges)
+        mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.3:7012", "127.0.0.4:7012",
+                                                         "127.0.0.5:7012"));
+        // Split range resulting from the new token. This range is exclusive of the new token and node 5, and
+        // has the same replicas as the previous range (as a result of the split)
+        mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.2:7012", "127.0.0.3:7012", "127.0.0.4:7012"));
+        // Node 1 is introduced here as it will take ownership of a portion of node 5's previous tokens as a result
+        // of the move.
+        mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.3:7012", "127.0.0.4:7012", "127.0.0.5:7012",
+                                                         "127.0.0.1:7012"));
+        // Following 2 ranges remain unchanged as the replica-set remain the same post-move
+        mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.1:7012"));
+        mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.5:7012", "127.0.0.1:7012", "127.0.0.2:7012"));
+        // Third (wrap-around) replica of the new location of node 5 is added to the existing replica-set
+        mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012",
+                                                         "127.0.0.5:7012"));
+
+        return new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+        {
+            {
+                put("datacenter1", mapping);
+            }
+        };
+    }
+
+    /**
+     * Generates expected token range and replica mappings specific to the test case involving a 10 node cluster
+     * across 2 DCs with the last node being moved by assigning it a different token
+     *
+     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+     * eg.
+     * Range 1 - A, B, C
+     * Range 2 - B, C, D
+     *
+     * In this test case, the moved node is inserted between nodes 1 and 2, resulting in splitting the ranges.
+     */
+    private Map<String, Map<Range<BigInteger>, List<String>>>
+    generateExpectedRangeMappingMovingNodeMultiDC(long moveTarget)
+    {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        List<Range<BigInteger>> expectedRanges = getMovingNodesExpectedRanges(annotation.nodesPerDc(),
+                                                                              annotation.numDcs(),
+                                                                              moveTarget);
+        /*
+         * The following expected ranges are generated based on the following token assignments and pending ranges.
+         *
+         * Token Allocations:
+         * MIN TOKEN: -9223372036854775808
+         * /127.0.0.1:7012:[-5534023222112865487]
+         * /127.0.0.2:7012:[-5534023222112865486]
+         * /127.0.0.3:7012:[-1844674407370955167]
+         * /127.0.0.10:7012:[-3689348814741910327] (New Location)
+         * /127.0.0.4:7012:[-1844674407370955166]
+         * /127.0.0.5:7012:[1844674407370955153]
+         * /127.0.0.6:7012:[1844674407370955154]
+         * /127.0.0.7:7012:[5534023222112865473]
+         * /127.0.0.8:7012:[5534023222112865474]
+         * /127.0.0.9:7012:[9223372036854775793]
+         * /127.0.0.10:7012:[9223372036854775793] (Old Location)
+         * MAX TOKEN: 9223372036854775807
+         *
+         * Pending Ranges:
+         * [-5534023222112865487, -5534023222112865486]=[127.0.0.10:7012]
+         * [-5534023222112865486, -3689348814741910327]=[127.0.0.10:7012]
+         * [-1844674407370955166, 1844674407370955153]=[127.0.0.2:7012]
+         * [1844674407370955153, 1844674407370955154]=[127.0.0.2:7012]
+         * [9223372036854775794, -5534023222112865487]=[127.0.0.10:7012]
+         */
+
+        Map<Range<BigInteger>, List<String>> dc1Mapping = new HashMap<>();
+        Map<Range<BigInteger>, List<String>> dc2Mapping = new HashMap<>();
+        // Replica 2
+        dc1Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012",
+                                                            "127.0.0.10:7012"));
+
+        dc1Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012"));
+        dc2Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012",
+                                                            "127.0.0.10:7012"));
+        // Split range resulting from the new token. Part 1 including the new token.
+        dc1Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012"));
+        dc2Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012",
+                                                            "127.0.0.10:7012"));
+        // Split range resulting from the new token. Part 2 excluding new token (but starting from it)
+        dc1Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012"));
+        dc2Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012"));
+
+        dc1Mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012"));
+        dc2Mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012"));
+
+        dc1Mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012"));
+        dc2Mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012",
+                                                            "127.0.0.2:7012"));
+
+        dc1Mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012"));
+        dc2Mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012",
+                                                            "127.0.0.2:7012"));
+
+        dc1Mapping.put(expectedRanges.get(7), Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012"));
+        dc2Mapping.put(expectedRanges.get(7), Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012"));
+
+        dc1Mapping.put(expectedRanges.get(8), Arrays.asList("127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012"));
+        dc2Mapping.put(expectedRanges.get(8), Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012"));
+
+        dc1Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012"));
+        dc2Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012"));
+
+        dc1Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012"));
+        // Replica 3
+        dc1Mapping.put(expectedRanges.get(11), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
+        dc2Mapping.put(expectedRanges.get(11), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012",
+                                                             "127.0.0.10:7012"));
+
+        Map<String, Map<Range<BigInteger>, List<String>>> multiDCMapping
+        = new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+        {
+            {
+                put("datacenter1", dc1Mapping);
+                put("datacenter2", dc2Mapping);
+            }
+        };
+        return multiDCMapping;
     }
 }

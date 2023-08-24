@@ -23,7 +23,9 @@
 //import java.util.ArrayList;
 //import java.util.Arrays;
 //import java.util.Collections;
+//import java.util.HashMap;
 //import java.util.List;
+//import java.util.Map;
 //import java.util.Optional;
 //import java.util.Set;
 //import java.util.concurrent.CountDownLatch;
@@ -57,6 +59,8 @@
 ///**
 // * Node replacement scenarios integration tests for token range replica mapping endpoint with cassandra container.
 // * Node replacement tests are temporarily disabled as they depend on a fix for CASSANDRA-18583
+// *
+// */
 //@ExtendWith(VertxExtension.class)
 //public class TokenRangeIntegrationReplacementTest extends BaseTokenRangeIntegrationTest
 //{
@@ -68,7 +72,8 @@
 //                                   cassandraTestContext,
 //                                   BBHelperReplacementsNode::install,
 //                                   BBHelperReplacementsNode.TRANSIENT_STATE_START,
-//                                   BBHelperReplacementsNode.TRANSIENT_STATE_END);
+//                                   BBHelperReplacementsNode.TRANSIENT_STATE_END,
+//                                   generateExpectedRangeMappingNodeReplacement());
 //    }
 //
 //    @CassandraIntegrationTest(
@@ -91,14 +96,17 @@
 //                                   BBHelperReplacementsMultiDC.TRANSIENT_STATE_START,
 //                                   BBHelperReplacementsMultiDC.TRANSIENT_STATE_END,
 //                                   cluster,
-//                                   nodesToRemove);
+//                                   nodesToRemove,
+//                                   generateExpectedRangeMappingReplacementMultiDC());
 //    }
 //
 //    private void runReplacementTestScenario(VertxTestContext context,
 //                                            ConfigurableCassandraTestContext cassandraTestContext,
 //                                            BiConsumer<ClassLoader, Integer> instanceInitializer,
 //                                            CountDownLatch transientStateStart,
-//                                            CountDownLatch transientStateEnd) throws Exception
+//                                            CountDownLatch transientStateEnd,
+//                                            Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings)
+//    throws Exception
 //    {
 //        UpgradeableCluster cluster =
 //        cassandraTestContext.configureAndStartCluster(builder ->
@@ -110,7 +118,8 @@
 //                                   transientStateStart,
 //                                   transientStateEnd,
 //                                   cluster,
-//                                   nodesToRemove);
+//                                   nodesToRemove,
+//                                   expectedRangeMappings);
 //    }
 //
 //    private void runReplacementTestScenario(VertxTestContext context,
@@ -118,7 +127,9 @@
 //                                            CountDownLatch transientStateStart,
 //                                            CountDownLatch transientStateEnd,
 //                                            UpgradeableCluster cluster,
-//                                            List<IUpgradeableInstance> nodesToRemove) throws Exception
+//                                            List<IUpgradeableInstance> nodesToRemove,
+//                                            Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings)
+//    throws Exception
 //    {
 //        try
 //        {
@@ -190,14 +201,15 @@
 //                                              TokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc() +
 //                                                                                    annotation.newNodesPerDc(),
 //                                                                                    1);
-//                List<Range<BigInteger>> expectedRanges = generateExpectedRanges(tokenSupplier, finalNodeCount);
 //                List<Integer> nodeNums = newNodes.stream().map(i -> i.config().num()).collect(Collectors.toList());
 //                validateNodeStates(mappingResponse,
 //                                   dcReplication,
 //                                   nodeNumber -> nodeNums.contains(nodeNumber) ? "Joining" : "Normal");
-//                validateTokenRanges(mappingResponse, expectedRanges);
 //
-//                validateReplicaMapping(mappingResponse, newNodes);
+//                int nodeCount = annotation.nodesPerDc()  * annotation.numDcs();
+//                validateTokenRanges(mappingResponse, generateExpectedRanges(nodeCount));
+//
+//                validateReplicaMapping(mappingResponse, newNodes, expectedRangeMappings);
 //                context.completeNow();
 //            });
 //        }
@@ -218,7 +230,7 @@
 //        // Launch replacements nodes with the config of the removed nodes
 //        for (IUpgradeableInstance removed : nodesToRemove)
 //        {
-//            // Add new instance for each removed instance as a replacement ok its owned token
+//            // Add new instance for each removed instance as a replacement of its owned token
 //            String remAddress = removed.config().broadcastAddress().getAddress().getHostAddress();
 //            IUpgradeableInstance replacement = ClusterUtils.addInstance(cluster, removed.config(),
 //                                                                        c -> {
@@ -261,7 +273,8 @@
 //    }
 //
 //    private void validateReplicaMapping(TokenRangeReplicasResponse mappingResponse,
-//                                        List<IUpgradeableInstance> newInstances)
+//                                        List<IUpgradeableInstance> newInstances,
+//                                        Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings)
 //    {
 //        List<String> transientNodeAddresses = newInstances.stream().map(i -> {
 //            InetSocketAddress address = i.config().broadcastAddress();
@@ -274,5 +287,134 @@
 //        Set<String> readReplicaInstances = instancesFromReplicaSet(mappingResponse.readReplicas());
 //        assertThat(readReplicaInstances).doesNotContainAnyElementsOf(transientNodeAddresses);
 //        assertThat(writeReplicaInstances).containsAll(transientNodeAddresses);
+//
+//        validateWriteReplicaMappings(mappingResponse.writeReplicas(), expectedRangeMappings);
 //    }
+//
+//    /**
+//     * Generates expected token range and replica mappings specific to the test case involving a 5 node cluster
+//     * with the last node replaced with a new node
+//     *
+//     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+//     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+//     * eg.
+//     * Range 1 - A, B, C
+//     * Range 2 - B, C, D
+//     *
+//     * Ranges will have [RF] replicas with ranges containing the replacement node having [RF + no. replacement nodes].
+//     *
+//     * eg.
+//     * Range 1 - A, B, C
+//     * Range 2 - B, C, D (with D being replaced with E)
+//     * Expected Range 2 - B, C, D, E (With E taking over the range of the node being replaced)
+//     */
+//    private Map<String, Map<Range<BigInteger>, List<String>>> generateExpectedRangeMappingNodeReplacement()
+//    {
+//        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+//        int nodeCount = annotation.nodesPerDc()  * annotation.numDcs();
+//        List<Range<BigInteger>> expectedRanges = generateExpectedRanges(nodeCount);
+//        Map<Range<BigInteger>, List<String>> mapping = new HashMap<>();
+//        mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+//        mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.3:7012", "127.0.0.4:7012"));
+//        mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.3:7012", "127.0.0.4:7012", "127.0.0.5:7012",
+//                                                         "127.0.0.6:7012"));
+//        mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.1:7012",
+//                                                         "127.0.0.6:7012"));
+//        mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.5:7012", "127.0.0.1:7012", "127.0.0.2:7012",
+//                                                         "127.0.0.6:7012"));
+//        mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012"));
+//        return new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+//        {
+//            {
+//                put("datacenter1", mapping);
+//            }
+//        };
+//    }
+//
+//    /**
+//     * Generates expected token range and replica mappings specific to the test case involving a 10 node cluster
+//     * across 2 DCs with the last 2 nodes leaving the cluster (1 per DC), with RF 3
+//     *
+//     * Expected ranges are generated by adding RF replicas per range in increasing order. The replica-sets in subsequent
+//     * ranges cascade with the next range excluding the first replica, and including the next replica from the nodes.
+//     * eg.
+//     * Range 1 - A, B, C
+//     * Range 2 - B, C, D
+//     *
+//     * In a multi-DC scenario, a single range will have nodes from both DCs. The replicas are grouped by DC here
+//     * to allow per-DC validation as returned from the sidecar endpoint.
+//     *
+//     * Ranges that including leaving node replicas will have [RF + no. leaving nodes in replica-set] replicas with
+//     * the new replicas being the existing nodes in ring-order.
+//     *
+//     * eg.
+//     * Range 1 - A, B, C
+//     * Range 2 - B, C, D (with D being the leaving node)
+//     * Expected Range 2 - B, C, D, A (With A taking over the range of the leaving node)
+//     */
+//    private Map<String, Map<Range<BigInteger>, List<String>>> generateExpectedRangeMappingReplacementMultiDC()
+//    {
+//        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+//        int nodeCount = annotation.nodesPerDc() * annotation.numDcs();
+//        List<Range<BigInteger>> expectedRanges = generateExpectedRanges(nodeCount);
+//        Map<Range<BigInteger>, List<String>> dc1Mapping = new HashMap<>();
+//        Map<Range<BigInteger>, List<String>> dc2Mapping = new HashMap<>();
+//
+//        dc1Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012",
+//                                                            "127.0.0.11:7012"));
+//        dc2Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012",
+//                                                            "127.0.0.11:7012"));
+//        dc2Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012",
+//                                                            "127.0.0.11:7012"));
+//        dc2Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012"));
+//        dc2Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012"));
+//        dc2Mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012",
+//                                                            "127.0.0.12:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012"));
+//        dc2Mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012",
+//                                                            "127.0.0.12:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012"));
+//        dc2Mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012",
+//                                                            "127.0.0.12:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(7), Arrays.asList("127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012",
+//                                                            "127.0.0.11:7012"));
+//        dc2Mapping.put(expectedRanges.get(7), Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012",
+//                                                            "127.0.0.12:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(8), Arrays.asList("127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012",
+//                                                            "127.0.0.11:7012"));
+//        dc2Mapping.put(expectedRanges.get(8), Arrays.asList("127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012",
+//                                                            "127.0.0.12:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012",
+//                                                            "127.0.0.11:7012"));
+//        dc2Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012",
+//                                                            "127.0.0.12:7012"));
+//
+//        dc1Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012",
+//                                                             "127.0.0.11:7012"));
+//        dc2Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012"));
+//
+//        Map<String, Map<Range<BigInteger>, List<String>>> multiDCMapping
+//        = new HashMap<String, Map<Range<BigInteger>, List<String>>>()
+//        {
+//            {
+//                put("datacenter1", dc1Mapping);
+//                put("datacenter2", dc2Mapping);
+//            }
+//        };
+//        return multiDCMapping;
+//    }
+//
 //}

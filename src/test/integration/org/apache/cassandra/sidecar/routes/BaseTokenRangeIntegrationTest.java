@@ -142,7 +142,7 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
                                                      numDcs,
                                                      1);
 
-        int totalNodeCount = annotation.nodesPerDc() * annotation.numDcs();
+        int totalNodeCount = (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs();
         return cassandraTestContext.configureAndStartCluster(
         builder -> {
             builder.withInstanceInitializer(initializer);
@@ -157,7 +157,13 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
     protected List<Range<BigInteger>> generateExpectedRanges()
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        int finalNodeCount = (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs();
+        int nodeCount = (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs();
+        return generateExpectedRanges(nodeCount);
+    }
+
+    protected List<Range<BigInteger>> generateExpectedRanges(int nodeCount)
+    {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
         TokenSupplier tokenSupplier = (annotation.numDcs() > 1) ?
                                       MultiDcTokenSupplier.evenlyDistributedTokens(
                                       annotation.nodesPerDc() + annotation.newNodesPerDc(),
@@ -174,7 +180,7 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
         BigInteger prevToken = new BigInteger(tokenSupplier.tokens(node++).stream().findFirst().get());
         Range<BigInteger> firstRange = Range.openClosed(startToken, prevToken);
         expectedRanges.add(firstRange);
-        while (node <= finalNodeCount)
+        while (node <= nodeCount)
         {
             BigInteger currentToken = new BigInteger(tokenSupplier.tokens(node).stream().findFirst().get());
             expectedRanges.add(Range.openClosed(prevToken, currentToken));

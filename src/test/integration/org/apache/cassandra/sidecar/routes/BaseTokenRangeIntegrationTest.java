@@ -652,7 +652,7 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
         {
             // Test case involves 6 node cluster (3 nodes per DC) with a 2 joining nodes (1 per DC)
             // We intercept the bootstrap of nodes (7, 8) to validate token ranges
-            if (nodeNumber > 6)
+            if (nodeNumber > 10)
             {
                 TypePool typePool = TypePool.Default.of(cl);
                 TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")

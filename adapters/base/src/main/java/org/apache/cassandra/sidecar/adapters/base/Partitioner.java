@@ -26,7 +26,7 @@ import java.math.BigInteger;
 public enum Partitioner
 {
     Murmur3(BigInteger.valueOf(Long.MIN_VALUE), BigInteger.valueOf(Long.MAX_VALUE)),
-    Random(BigInteger.ONE.negate(), BigInteger.valueOf(2).pow(127).subtract(BigInteger.ONE));
+    Random(BigInteger.ONE.negate(), BigInteger.valueOf(2).pow(127));
 
     public final BigInteger minToken;
     public final BigInteger maxToken;

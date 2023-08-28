@@ -194,8 +194,7 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
     protected Set<String> instancesFromReplicaSet(List<TokenRangeReplicasResponse.ReplicaInfo> replicas)
     {
         return replicas.stream()
-                       .map(r -> r.replicasByDatacenter().values())
-                       .flatMap(Collection::stream)
+                       .flatMap(r -> r.replicasByDatacenter().values().stream())
                        .flatMap(Collection::stream)
                        .collect(Collectors.toSet());
     }

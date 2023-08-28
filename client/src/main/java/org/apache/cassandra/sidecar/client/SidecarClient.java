@@ -177,7 +177,8 @@ public class SidecarClient implements AutoCloseable
         InstanceSelectionPolicy instanceSelectionPolicy = new RandomInstanceSelectionPolicy(instancesProvider);
         return executeRequestAsync(requestBuilder()
                                    .instanceSelectionPolicy(instanceSelectionPolicy)
-                                   .tokenRangeReplicasRequest(keyspace).build());
+                                   .tokenRangeReplicasRequest(keyspace)
+                                   .build());
     }
 
     /**

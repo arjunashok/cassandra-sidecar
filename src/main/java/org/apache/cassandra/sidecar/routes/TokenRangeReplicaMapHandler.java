@@ -105,7 +105,7 @@ public class TokenRangeReplicaMapHandler extends AbstractHandler<TokenRangeRepli
         if (cause instanceof AssertionError &&
             StringUtils.contains(cause.getMessage(), "Unknown keyspace"))
         {
-            context.fail(new HttpException(HttpResponseStatus.NOT_FOUND.code(), cause.getMessage()));
+            context.fail(HttpExceptions.wrapHttpException(HttpResponseStatus.NOT_FOUND, cause.getMessage()));
             return;
         }
 

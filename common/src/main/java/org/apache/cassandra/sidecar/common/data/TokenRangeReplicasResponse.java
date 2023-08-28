@@ -50,7 +50,7 @@ public class TokenRangeReplicasResponse
     }
 
     /**
-     * @return returns replica to it's state information mapping
+     * @return the replica to state information mapping
      */
     @JsonProperty("replicaState")
     public Map<String, String> replicaState()
@@ -59,7 +59,7 @@ public class TokenRangeReplicasResponse
     }
 
     /**
-     * @return returns the {@link ReplicaInfo} instances representing write replicas for each token range
+     * @return the {@link ReplicaInfo} instances representing write replicas for each token range
      */
     @JsonProperty("writeReplicas")
     public List<ReplicaInfo> writeReplicas()
@@ -68,7 +68,7 @@ public class TokenRangeReplicasResponse
     }
 
     /**
-     * @return returns the {@link ReplicaInfo} instances representing read replicas for each token range
+     * @return the {@link ReplicaInfo} instances representing read replicas for each token range
      */
     @JsonProperty("readReplicas")
     public List<ReplicaInfo> readReplicas()

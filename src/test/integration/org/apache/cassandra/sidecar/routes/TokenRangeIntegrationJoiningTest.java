@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
@@ -42,6 +43,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.ClassFileLocator;
+import net.bytebuddy.dynamic.TypeResolutionStrategy;
+import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.implementation.MethodDelegation;
+import net.bytebuddy.implementation.bind.annotation.SuperCall;
+import net.bytebuddy.pool.TypePool;
 import org.apache.cassandra.distributed.UpgradeableCluster;
 import org.apache.cassandra.distributed.api.Feature;
 import org.apache.cassandra.distributed.api.IUpgradeableInstance;
@@ -50,7 +59,10 @@ import org.apache.cassandra.distributed.shared.ClusterUtils;
 import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse;
 import org.apache.cassandra.testing.CassandraIntegrationTest;
 import org.apache.cassandra.testing.ConfigurableCassandraTestContext;
+import org.apache.cassandra.utils.Shared;
 
+import static net.bytebuddy.matcher.ElementMatchers.named;
+import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -59,6 +71,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(VertxExtension.class)
 public class TokenRangeIntegrationJoiningTest extends BaseTokenRangeIntegrationTest
 {
+
     @CassandraIntegrationTest(nodesPerDc = 5, newNodesPerDc = 1, network = true, gossip = true, buildCluster = false)
     void retrieveMappingWithJoiningNode(VertxTestContext context,
                                         ConfigurableCassandraTestContext cassandraTestContext) throws Exception
@@ -733,4 +746,198 @@ public class TokenRangeIntegrationJoiningTest extends BaseTokenRangeIntegrationT
         return multiDCMapping;
     }
 
+    /**
+     * ByteBuddy helper for a single joining node
+     */
+    @Shared
+    public static class BBHelperSingleJoiningNode
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(1);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(1);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves 3 node cluster with 1 joining node
+            // We intercept the bootstrap of the leaving node (4) to validate token ranges
+            if (nodeNumber == 6)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("bootstrap").and(takesArguments(2)))
+                               .intercept(MethodDelegation.to(BBHelperSingleJoiningNode.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        public static boolean bootstrap(Collection<?> tokens,
+                                        long bootstrapTimeoutMillis,
+                                        @SuperCall Callable<Boolean> orig) throws Exception
+        {
+            boolean result = orig.call();
+            // trigger bootstrap start and wait until bootstrap is ready from test
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            return result;
+        }
+    }
+
+    /**
+     * ByteBuddy helper for multiple joining nodes
+     */
+    @Shared
+    public static class BBHelperMultipleJoiningNodes
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(2);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(2);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves 3 node cluster with a 2 joining nodes
+            // We intercept the joining of nodes (4, 5) to validate token ranges
+            if (nodeNumber > 3)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("bootstrap").and(takesArguments(2)))
+                               .intercept(MethodDelegation.to(BBHelperMultipleJoiningNodes.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        public static boolean bootstrap(Collection<?> tokens,
+                                        long bootstrapTimeoutMillis,
+                                        @SuperCall Callable<Boolean> orig) throws Exception
+        {
+            boolean result = orig.call();
+            // trigger bootstrap start and wait until bootstrap is ready from test
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            return result;
+        }
+    }
+
+    /**
+     * ByteBuddy helper for doubling cluster size
+     */
+    @Shared
+    public static class BBHelperDoubleClusterSize
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(5);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(5);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves 5 node cluster doubling in size
+            // We intercept the bootstrap of the new nodes (6-10) to validate token ranges
+            if (nodeNumber > 5)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("bootstrap").and(takesArguments(2)))
+                               .intercept(MethodDelegation.to(BBHelperDoubleClusterSize.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        public static boolean bootstrap(Collection<?> tokens,
+                                        long bootstrapTimeoutMillis,
+                                        @SuperCall Callable<Boolean> orig) throws Exception
+        {
+            boolean result = orig.call();
+            // trigger bootstrap start and wait until bootstrap is ready from test
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            return result;
+        }
+    }
+
+    /**
+     * ByteBuddy helper for multiple joining nodes
+     */
+    @Shared
+    public static class BBHelperDoubleClusterMultiDC
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(6);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(6);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves doubling the size of a 6 node cluster (3 per DC)
+            // We intercept the bootstrap of nodes (7-12) to validate token ranges
+            if (nodeNumber > 6)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("bootstrap").and(takesArguments(2)))
+                               .intercept(MethodDelegation.to(BBHelperDoubleClusterMultiDC.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        public static boolean bootstrap(Collection<?> tokens,
+                                        long bootstrapTimeoutMillis,
+                                        @SuperCall Callable<Boolean> orig) throws Exception
+        {
+            boolean result = orig.call();
+            // trigger bootstrap start and wait until bootstrap is ready from test
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            return result;
+        }
+    }
+
+    /**
+     * ByteBuddy helper for multiple joining nodes multi-DC
+     */
+    @Shared
+    public static class BBHelperJoiningNodesMultiDC
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(2);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(2);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves 6 node cluster (3 nodes per DC) with a 2 joining nodes (1 per DC)
+            // We intercept the bootstrap of nodes (7, 8) to validate token ranges
+            if (nodeNumber > 10)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("bootstrap").and(takesArguments(2)))
+                               .intercept(MethodDelegation.to(BBHelperJoiningNodesMultiDC.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        public static boolean bootstrap(Collection<?> tokens,
+                                        long bootstrapTimeoutMillis,
+                                        @SuperCall Callable<Boolean> orig) throws Exception
+        {
+            boolean result = orig.call();
+            // trigger bootstrap start and wait until bootstrap is ready from test
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            return result;
+        }
+    }
 }

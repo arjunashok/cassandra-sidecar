@@ -65,8 +65,7 @@ public interface StorageOperations
      * @param keyspace the keyspace in the Cassandra database
      * @param partitioner token partitioner used for token assignment
      * @return token range to read and write replica mappings
-     * @throws UnknownHostException when hostname of peer Cassandra nodes cannot be resolved
      */
     TokenRangeReplicasResponse tokenRangeReplicas(@NotNull String keyspace,
-                                                  @NotNull String partitioner) throws UnknownHostException;
+                                                  @NotNull String partitioner);
 }

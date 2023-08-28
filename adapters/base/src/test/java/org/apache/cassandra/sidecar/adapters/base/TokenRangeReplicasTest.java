@@ -68,7 +68,6 @@ public class TokenRangeReplicasTest
         assertThat(hasOverlaps(rangeList)).isFalse();
     }
 
-    // TODO: Validate unwrapping separately
     @Test
     public void subRangeTest()
     {
@@ -509,28 +508,6 @@ public class TokenRangeReplicasTest
         assertThat(checkContains(rangeList, expectedExists3.get(0))).isTrue();
         assertThat(checkContains(rangeList, expectedExists4.get(0))).isTrue();
         assertThat(checkContains(rangeList, expectedNotExists.get(0))).isFalse();
-    }
-
-    @Test
-    void testRangeIsLarger()
-    {
-        // Single token range
-        TokenRangeReplicas range1 = TokenRangeReplicas.generateTokenRangeReplicas(
-        Partitioner.Murmur3.minToken, Partitioner.Murmur3.minToken, Partitioner.Murmur3, new HashSet<>()).get(0);
-        TokenRangeReplicas range2 = TokenRangeReplicas.generateTokenRangeReplicas(
-        BigInteger.valueOf(100), Partitioner.Murmur3.maxToken, Partitioner.Murmur3, new HashSet<>()).get(0);
-        TokenRangeReplicas range3 = TokenRangeReplicas.generateTokenRangeReplicas(
-        BigInteger.valueOf(100), BigInteger.valueOf(150), Partitioner.Murmur3, new HashSet<>()).get(0);
-        TokenRangeReplicas range4 = TokenRangeReplicas.generateTokenRangeReplicas(
-        BigInteger.valueOf(120), BigInteger.valueOf(150), Partitioner.Murmur3, new HashSet<>()).get(0);
-        TokenRangeReplicas range5 = TokenRangeReplicas.generateTokenRangeReplicas(
-        BigInteger.valueOf(1000), BigInteger.valueOf(1002), Partitioner.Murmur3, new HashSet<>()).get(0);
-        assertThat(range2.isLarger(range1)).isTrue();
-        assertThat(range2.isLarger(range3)).isTrue();
-        assertThat(range3.isLarger(range2)).isFalse();
-        assertThat(range3.isLarger(range4)).isTrue();
-        assertThat(range4.isLarger(range3)).isFalse();
-        assertThat(range4.isLarger(range5)).isTrue(); // Disjoint case
     }
 
     @Test

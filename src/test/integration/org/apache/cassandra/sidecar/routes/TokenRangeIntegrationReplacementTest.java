@@ -22,12 +22,14 @@
 //import java.net.InetSocketAddress;
 //import java.util.ArrayList;
 //import java.util.Arrays;
+//import java.util.Collection;
 //import java.util.Collections;
 //import java.util.HashMap;
 //import java.util.List;
 //import java.util.Map;
 //import java.util.Optional;
 //import java.util.Set;
+//import java.util.concurrent.Callable;
 //import java.util.concurrent.CountDownLatch;
 //import java.util.concurrent.TimeUnit;
 //import java.util.function.BiConsumer;
@@ -43,6 +45,14 @@
 //import io.netty.handler.codec.http.HttpResponseStatus;
 //import io.vertx.junit5.VertxExtension;
 //import io.vertx.junit5.VertxTestContext;
+//import net.bytebuddy.ByteBuddy;
+//import net.bytebuddy.description.type.TypeDescription;
+//import net.bytebuddy.dynamic.ClassFileLocator;
+//import net.bytebuddy.dynamic.TypeResolutionStrategy;
+//import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+//import net.bytebuddy.implementation.MethodDelegation;
+//import net.bytebuddy.implementation.bind.annotation.SuperCall;
+//import net.bytebuddy.pool.TypePool;
 //import org.apache.cassandra.config.CassandraRelevantProperties;
 //import org.apache.cassandra.distributed.UpgradeableCluster;
 //import org.apache.cassandra.distributed.api.Feature;
@@ -52,8 +62,11 @@
 //import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse;
 //import org.apache.cassandra.testing.CassandraIntegrationTest;
 //import org.apache.cassandra.testing.ConfigurableCassandraTestContext;
+//import org.apache.cassandra.utils.Shared;
 //
-//import static org.apache.cassandra.sidecar.routes.BaseTokenRangeIntegrationTest.BBHelperReplacementsMultiDC.NODE_START;
+//import static net.bytebuddy.matcher.ElementMatchers.named;
+//import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
+//import static org.apache.cassandra.sidecar.routes.TokenRangeIntegrationReplacementTest.BBHelperReplacementsMultiDC.NODE_START;
 //import static org.assertj.core.api.Assertions.assertThat;
 //
 ///**
@@ -419,4 +432,85 @@
 //        return multiDCMapping;
 //    }
 //
+//    /**
+//     * ByteBuddy helper for a single node replacement
+//     */
+//    @Shared
+//    public static class BBHelperReplacementsNode
+//    {
+//        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(1);
+//        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(1);
+//
+//        public static void install(ClassLoader cl, Integer nodeNumber)
+//        {
+//            // Test case involves 5 node cluster with a replacement node
+//            // We intercept the bootstrap of the replacement (6th) node to validate token ranges
+//            if (nodeNumber == 6)
+//            {
+//                TypePool typePool = TypePool.Default.of(cl);
+//                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+//                                                      .resolve();
+//                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+//                               .method(named("bootstrap").and(takesArguments(2)))
+//                               .intercept(MethodDelegation.to(BBHelperReplacementsNode.class))
+//                               // Defer class loading until all dependencies are loaded
+//                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+//                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+//            }
+//        }
+//
+//        public static boolean bootstrap(Collection<?> tokens,
+//                                        long bootstrapTimeoutMillis,
+//                                        @SuperCall Callable<Boolean> orig) throws Exception
+//        {
+//            boolean result = orig.call();
+//            // trigger bootstrap start and wait until bootstrap is ready from test
+//            TRANSIENT_STATE_START.countDown();
+//            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+//            return result;
+//        }
+//    }
+//
+//    /**
+//     * ByteBuddy helper for multi-DC node replacement
+//     */
+//    @Shared
+//    public static class BBHelperReplacementsMultiDC
+//    {
+//        // Additional latch used here to sequentially start the 2 new nodes to isolate the loading
+//        // of the shared Cassandra system property REPLACE_ADDRESS_FIRST_BOOT across instances
+//        public static final CountDownLatch NODE_START = new CountDownLatch(1);
+//        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(2);
+//        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(2);
+//
+//        public static void install(ClassLoader cl, Integer nodeNumber)
+//        {
+//            // Test case involves 10 node cluster (across 2 DCs) with a 2 replacement nodes
+//            // We intercept the bootstrap of the replacement nodes to validate token ranges
+//            if (nodeNumber > 10)
+//            {
+//                TypePool typePool = TypePool.Default.of(cl);
+//                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+//                                                      .resolve();
+//                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+//                               .method(named("bootstrap").and(takesArguments(2)))
+//                               .intercept(MethodDelegation.to(BBHelperReplacementsMultiDC.class))
+//                               // Defer class loading until all dependencies are loaded
+//                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+//                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+//            }
+//        }
+//
+//        public static boolean bootstrap(Collection<?> tokens,
+//                                        long bootstrapTimeoutMillis,
+//                                        @SuperCall Callable<Boolean> orig) throws Exception
+//        {
+//            boolean result = orig.call();
+//            NODE_START.countDown();
+//            // trigger bootstrap start and wait until bootstrap is ready from test
+//            TRANSIENT_STATE_START.countDown();
+//            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+//            return result;
+//        }
+//    }
 //}

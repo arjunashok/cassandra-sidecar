@@ -29,7 +29,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -42,6 +44,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.ClassFileLocator;
+import net.bytebuddy.dynamic.TypeResolutionStrategy;
+import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.implementation.MethodDelegation;
+import net.bytebuddy.implementation.bind.annotation.SuperCall;
+import net.bytebuddy.pool.TypePool;
 import org.apache.cassandra.distributed.UpgradeableCluster;
 import org.apache.cassandra.distributed.api.IUpgradeableInstance;
 import org.apache.cassandra.distributed.api.TokenSupplier;
@@ -50,7 +60,9 @@ import org.apache.cassandra.sidecar.adapters.base.Partitioner;
 import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse;
 import org.apache.cassandra.testing.CassandraIntegrationTest;
 import org.apache.cassandra.testing.ConfigurableCassandraTestContext;
+import org.apache.cassandra.utils.Shared;
 
+import static net.bytebuddy.matcher.ElementMatchers.named;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -392,5 +404,77 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
             }
         };
         return multiDCMapping;
+    }
+
+    /**
+     * ByteBuddy Helper for a multiDC moving node
+     */
+    @Shared
+    public static class BBHelperMovingNodeMultiDC
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(1);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(1);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Moving the 5th node in the test case
+            if (nodeNumber == MULTIDC_MOVING_NODE_IDX)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.RangeRelocator")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("stream"))
+                               .intercept(MethodDelegation.to(BBHelperMovingNode.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static Future<?> stream(@SuperCall Callable<Future<?>> orig) throws Exception
+        {
+            Future<?> res = orig.call();
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            return res;
+        }
+    }
+
+    /**
+     * ByteBuddy Helper for a single moving node
+     */
+    @Shared
+    public static class BBHelperMovingNode
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(1);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(1);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Moving the 5th node in the test case
+            if (nodeNumber == MOVING_NODE_IDX)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.RangeRelocator")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("stream"))
+                               .intercept(MethodDelegation.to(BBHelperMovingNode.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static Future<?> stream(@SuperCall Callable<Future<?>> orig) throws Exception
+        {
+            Future<?> res = orig.call();
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            return res;
+        }
     }
 }

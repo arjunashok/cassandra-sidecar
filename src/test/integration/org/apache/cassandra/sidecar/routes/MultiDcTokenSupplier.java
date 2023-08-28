@@ -30,25 +30,38 @@ import org.apache.cassandra.distributed.api.TokenSupplier;
 public class MultiDcTokenSupplier
 {
 
-    static TokenSupplier evenlyDistributedTokens(int numNodes, int numDcs, int numTokens)
+    /**
+     * Tokens are allocation used in tests to simulate token allocation nodes for an approx even distribution
+     * in a multiDC environment with nodes from different DCs being interleaved.
+     * @param numNodes no. nodes from a single DC
+     * @param numDcs no. of datacenters
+     * @param numTokensPerNode no. tokens allocated to each node (this is always 1 if there are no vnodes)
+     * @return The token supplier that vends the tokens
+     */
+    static TokenSupplier evenlyDistributedTokens(int numNodes, int numDcs, int numTokensPerNode)
     {
-        long totalTokens = (long) numNodes * numDcs * numTokens;
-        BigInteger increment = BigInteger.valueOf((Long.MAX_VALUE / totalTokens) * 4);
+
+        long totalTokens = (long) numNodes * numDcs * numTokensPerNode;
+        // Similar to Cassandra TokenSupplier, the increment is doubled to account for all tokens from MIN - MAX.
+        // For multi-DC, since neighboring nodes from different DCs have consecutive tokens, the increment is
+        // broadened by a factor of numDcs.
+        BigInteger increment = BigInteger.valueOf(((Long.MAX_VALUE / totalTokens) * 2 * numDcs));
         List<String>[] tokens = new List[numNodes * numDcs];
 
         for (int i = 0; i < (numNodes * numDcs); ++i)
         {
-            tokens[i] = new ArrayList(numTokens);
+            tokens[i] = new ArrayList(numTokensPerNode);
         }
 
         BigInteger value = BigInteger.valueOf(Long.MIN_VALUE + 1);
 
-        for (int i = 0; i < numTokens; ++i)
+        for (int i = 0; i < numTokensPerNode; ++i)
         {
             int nodeId = 1;
             while (nodeId <= (numNodes * numDcs))
             {
                 value = value.add(increment);
+                // Nodes in different DCs are separated by a single token
                 for (int dc = 0; dc < numDcs; dc++)
                 {
                     tokens[nodeId - 1].add(value.add(BigInteger.valueOf(dc)).toString());
@@ -57,8 +70,6 @@ public class MultiDcTokenSupplier
             }
         }
 
-        return (nodeIdx) -> {
-            return tokens[nodeIdx - 1];
-        };
+        return (nodeIdx) -> tokens[nodeIdx - 1];
     }
 }

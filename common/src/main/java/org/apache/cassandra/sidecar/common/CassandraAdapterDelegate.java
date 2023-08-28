@@ -252,7 +252,6 @@ public class CassandraAdapterDelegate implements ICassandraAdapter, Host.StateLi
         }
         catch (IOException e)
         {
-            // Can't throw unchecked exceptions here, so wrap and rethrow
             LOGGER.warn("Unable to close JMX client", e);
         }
     }

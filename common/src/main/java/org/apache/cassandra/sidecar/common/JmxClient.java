@@ -266,6 +266,7 @@ public class JmxClient implements NotificationListener, Closeable
         {
             connector = jmxConnector;
             jmxConnector = null;
+            connected = false;
         }
         if (connector != null)
         {

@@ -18,8 +18,6 @@
 
 package org.apache.cassandra.sidecar.routes;
 
-import java.net.UnknownHostException;
-
 import org.apache.commons.lang3.StringUtils;
 
 import com.datastax.driver.core.Metadata;
@@ -80,16 +78,9 @@ public class TokenRangeReplicaMapHandler extends AbstractHandler<TokenRangeRepli
             return;
         }
 
-        executorPools.service().executeBlocking(promise -> {
-            try
-            {
-                context.json(storageOperations.tokenRangeReplicas(request.keyspace(), metadata.getPartitioner()));
-            }
-            catch (UnknownHostException e)
-            {
-                processFailure(e, context, host, remoteAddress, request);
-            }
-        }).onFailure(cause -> processFailure(cause, context, host, remoteAddress, request));
+        executorPools.service().executeBlocking(promise ->
+            context.json(storageOperations.tokenRangeReplicas(request.keyspace(), metadata.getPartitioner()))
+        ).onFailure(cause -> processFailure(cause, context, host, remoteAddress, request));
     }
 
     @Override

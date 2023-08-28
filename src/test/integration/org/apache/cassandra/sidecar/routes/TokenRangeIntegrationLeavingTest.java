@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -40,6 +41,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.ClassFileLocator;
+import net.bytebuddy.dynamic.TypeResolutionStrategy;
+import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.implementation.MethodDelegation;
+import net.bytebuddy.implementation.bind.annotation.SuperCall;
+import net.bytebuddy.pool.TypePool;
 import org.apache.cassandra.distributed.UpgradeableCluster;
 import org.apache.cassandra.distributed.api.IUpgradeableInstance;
 import org.apache.cassandra.distributed.api.TokenSupplier;
@@ -47,7 +56,9 @@ import org.apache.cassandra.distributed.shared.ClusterUtils;
 import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse;
 import org.apache.cassandra.testing.CassandraIntegrationTest;
 import org.apache.cassandra.testing.ConfigurableCassandraTestContext;
+import org.apache.cassandra.utils.Shared;
 
+import static net.bytebuddy.matcher.ElementMatchers.named;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -591,5 +602,185 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
         assertThat(writeReplicaInstances).containsAll(transientNodeAddresses);
 
         validateWriteReplicaMappings(mappingResponse.writeReplicas(), expectedRangeMappings);
+    }
+
+    /**
+     * ByteBuddy Helper for a single leaving node
+     */
+    @Shared
+    public static class BBHelperSingleLeavingNode
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(1);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(1);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves 5 node cluster with 1 leaving node
+            // We intercept the shutdown of the leaving node (5) to validate token ranges
+            if (nodeNumber == 5)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("unbootstrap"))
+                               .intercept(MethodDelegation.to(BBHelperSingleLeavingNode.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static void unbootstrap(@SuperCall Callable<?> orig) throws Exception
+        {
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            orig.call();
+        }
+    }
+
+    /**
+     * ByteBuddy helper for multiple leaving nodes
+     */
+    @Shared
+    public static class BBHelperMultipleLeavingNodes
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(2);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(2);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves 5 node cluster with a 2 leaving nodes
+            // We intercept the shutdown of the leaving nodes (4, 5) to validate token ranges
+            if (nodeNumber > 3)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("unbootstrap"))
+                               .intercept(MethodDelegation.to(BBHelperMultipleLeavingNodes.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static void unbootstrap(@SuperCall Callable<?> orig) throws Exception
+        {
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            orig.call();
+        }
+    }
+
+    /**
+     * ByteBuddy helper for shrinking cluster by half its size
+     */
+    @Shared
+    public static class BBHelperHalveClusterSize
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(3);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(3);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves halving the size of a 6 node cluster
+            // We intercept the shutdown of the removed nodes (4-6) to validate token ranges
+            if (nodeNumber > 3)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("unbootstrap"))
+                               .intercept(MethodDelegation.to(BBHelperHalveClusterSize.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static void unbootstrap(@SuperCall Callable<?> orig) throws Exception
+        {
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            orig.call();
+        }
+    }
+
+    /**
+     * ByteBuddy helper for multiple leaving nodes multi-DC
+     */
+    @Shared
+    public static class BBHelperLeavingNodesMultiDC
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(2);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(2);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves 10 node cluster (5 nodes per DC) with a 2 leaving nodes (1 per DC)
+            // We intercept the shutdown of the leaving nodes (9, 10) to validate token ranges
+            if (nodeNumber > 8)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("unbootstrap"))
+                               .intercept(MethodDelegation.to(BBHelperLeavingNodesMultiDC.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static void unbootstrap(@SuperCall Callable<?> orig) throws Exception
+        {
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            orig.call();
+        }
+    }
+
+    /**
+     * ByteBuddy helper for halve cluster size with multi-DC
+     */
+    @Shared
+    public static class BBHelperHalveClusterMultiDC
+    {
+        public static final CountDownLatch TRANSIENT_STATE_START = new CountDownLatch(6);
+        public static final CountDownLatch TRANSIENT_STATE_END = new CountDownLatch(6);
+
+        public static void install(ClassLoader cl, Integer nodeNumber)
+        {
+            // Test case involves halving the size of a 12 node cluster (6 per DC)
+            // We intercept the shutdown of the removed nodes (7-12) to validate token ranges
+            if (nodeNumber > 6)
+            {
+                TypePool typePool = TypePool.Default.of(cl);
+                TypeDescription description = typePool.describe("org.apache.cassandra.service.StorageService")
+                                                      .resolve();
+                new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
+                               .method(named("unbootstrap"))
+                               .intercept(MethodDelegation.to(BBHelperHalveClusterMultiDC.class))
+                               // Defer class loading until all dependencies are loaded
+                               .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
+                               .load(cl, ClassLoadingStrategy.Default.INJECTION);
+            }
+        }
+
+        @SuppressWarnings("unused")
+        public static void unbootstrap(@SuperCall Callable<?> orig) throws Exception
+        {
+            TRANSIENT_STATE_START.countDown();
+            Uninterruptibles.awaitUninterruptibly(TRANSIENT_STATE_END);
+            orig.call();
+        }
     }
 }

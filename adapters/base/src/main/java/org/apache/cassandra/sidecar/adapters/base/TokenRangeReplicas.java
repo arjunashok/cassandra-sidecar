@@ -74,6 +74,7 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
             return unwrapRange(start, end, partitioner, replicaSet);
         }
 
+        LOGGER.info("Generating replica-map for range: {} - {} : Replicaset: {}", start, end, replicaSet);
         return Collections.singletonList(new TokenRangeReplicas(start, end, partitioner, replicaSet));
     }
 
@@ -123,7 +124,8 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
 
         return Objects.equals(start, that.start)
                && Objects.equals(end, that.end)
-               && partitioner == that.partitioner;
+               && partitioner == that.partitioner
+               && replicaSet.equals(that.replicaSet);
     }
 
     /**
@@ -141,28 +143,10 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
             throw new IllegalStateException("Token ranges being compared do not have the same partitioner");
     }
 
-    protected boolean contains(TokenRangeReplicas other)
+    boolean contains(TokenRangeReplicas other)
     {
         validateRangesForComparison(other);
         return (other.start.compareTo(this.start) >= 0 && other.end.compareTo(this.end) <= 0);
-    }
-
-    /**
-     * For subset ranges, this is used to determine if a range is larger than the other by comparing start-end lengths
-     * If both ranges end at the min, we compare starting points to determine the result.
-     * When the left range is the only one ending at min, it is always the larger one since all subsequent ranges
-     * in the sorted range list have to be smaller.
-     * <p>
-     * This method assumes that the ranges are normalized and unwrapped, i.e.
-     * 'this' comes before 'other' AND there's no wrapping around the min token
-     *
-     * @param other the next range in the range list to compare
-     * @return true if "this" range is larger than the other
-     */
-    protected boolean isLarger(TokenRangeReplicas other)
-    {
-        validateRangesForComparison(other);
-        return this.end.subtract(this.start).compareTo(other.end.subtract(other.start)) > 0;
     }
 
     /**
@@ -174,7 +158,7 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
      * @param other the range we are currently processing to check if "this" intersects it
      * @return true if "this" range intersects the other
      */
-    protected boolean intersects(TokenRangeReplicas other)
+    boolean intersects(TokenRangeReplicas other)
     {
         if (this.compareTo(other) > 0)
             throw new IllegalStateException(
@@ -339,7 +323,7 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
      * @param next    cursor to the intersecting range after the current range
      * @return cursor to the subsequent non-intersecting range
      */
-    protected static TokenRangeReplicas processIntersectingRanges(List<TokenRangeReplicas> output,
+    static TokenRangeReplicas processIntersectingRanges(List<TokenRangeReplicas> output,
                                                                   Iterator<TokenRangeReplicas> iter,
                                                                   TokenRangeReplicas current,
                                                                   TokenRangeReplicas next)

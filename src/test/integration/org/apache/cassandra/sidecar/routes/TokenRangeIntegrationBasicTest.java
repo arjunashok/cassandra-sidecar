@@ -59,7 +59,6 @@ public class TokenRangeIntegrationBasicTest extends BaseTokenRangeIntegrationTes
         retrieveMappingWithKeyspace(context, TEST_KEYSPACE, response -> {
             assertThat(response.statusCode()).isEqualTo(HttpResponseStatus.OK.code());
             TokenRangeReplicasResponse mappingResponse = response.bodyAsJson(TokenRangeReplicasResponse.class);
-            // TODO: Add removed checks
             assertMappingResponseOK(mappingResponse, 1, Collections.singleton("datacenter1"));
             context.completeNow();
         });
@@ -72,7 +71,6 @@ public class TokenRangeIntegrationBasicTest extends BaseTokenRangeIntegrationTes
         createTestKeyspace(ImmutableMap.of("datacenter1", replicationFactor));
         retrieveMappingWithKeyspace(context, TEST_KEYSPACE, response -> {
             TokenRangeReplicasResponse mappingResponse = response.bodyAsJson(TokenRangeReplicasResponse.class);
-            // TODO: Add removed checks
             assertMappingResponseOK(mappingResponse, replicationFactor, Collections.singleton("datacenter1"));
             context.completeNow();
         });

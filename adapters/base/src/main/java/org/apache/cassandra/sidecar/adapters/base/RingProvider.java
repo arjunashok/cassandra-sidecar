@@ -46,12 +46,6 @@ public class RingProvider
     private static final Logger LOGGER = LoggerFactory.getLogger(RingProvider.class);
     private static final String UNKNOWN_SHORT = "?";
     private static final String UNKNOWN = "Unknown";
-    private static final String STATUS_UP = "Up";
-    private static final String STATUS_DOWN = "Down";
-    private static final String STATE_JOINING = "Joining";
-    private static final String STATE_LEAVING = "Leaving";
-    private static final String STATE_MOVING = "Moving";
-    private static final String STATE_NORMAL = "Normal";
     private static final String DECIMAL_FORMAT = "##0.00%";
 
     protected final JmxClient jmxClient;
@@ -171,9 +165,9 @@ public class RingProvider
         String of(String endpoint)
         {
             if (liveNodes.contains(endpoint))
-                return STATUS_UP;
+                return NodeInfo.NodeStatus.UP.toString();
             if (deadNodes.contains(endpoint))
-                return STATUS_DOWN;
+                return NodeInfo.NodeStatus.DOWN.toString();
             return UNKNOWN_SHORT;
         }
     }
@@ -183,7 +177,7 @@ public class RingProvider
      */
     static class State
     {
-        private final Set<String> joiningNodes;
+        protected final Set<String> joiningNodes;
         private final Set<String> leavingNodes;
         private final Set<String> movingNodes;
 
@@ -197,12 +191,12 @@ public class RingProvider
         String of(String endpoint)
         {
             if (joiningNodes.contains(endpoint))
-                return STATE_JOINING;
+                return NodeInfo.NodeState.JOINING.toString();
             else if (leavingNodes.contains(endpoint))
-                return STATE_LEAVING;
+                return NodeInfo.NodeState.LEAVING.toString();
             else if (movingNodes.contains(endpoint))
-                return STATE_MOVING;
-            return STATE_NORMAL;
+                return NodeInfo.NodeState.MOVING.toString();
+            return NodeInfo.NodeState.NORMAL.toString();
         }
     }
 

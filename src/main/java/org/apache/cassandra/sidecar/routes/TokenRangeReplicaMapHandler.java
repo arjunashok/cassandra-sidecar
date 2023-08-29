@@ -27,12 +27,12 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.SocketAddress;
 import io.vertx.ext.web.RoutingContext;
-import io.vertx.ext.web.handler.HttpException;
 import org.apache.cassandra.sidecar.common.CassandraAdapterDelegate;
 import org.apache.cassandra.sidecar.common.StorageOperations;
 import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasRequest;
 import org.apache.cassandra.sidecar.common.utils.CassandraInputValidator;
 import org.apache.cassandra.sidecar.concurrent.ExecutorPools;
+import org.apache.cassandra.sidecar.utils.HttpExceptions;
 import org.apache.cassandra.sidecar.utils.InstanceMetadataFetcher;
 
 import static org.apache.cassandra.sidecar.utils.HttpExceptions.cassandraServiceUnavailable;

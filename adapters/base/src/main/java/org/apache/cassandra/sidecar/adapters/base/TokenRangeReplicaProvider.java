@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.sidecar.adapters.base.NodeInfo.NodeState;
 import org.apache.cassandra.sidecar.common.JmxClient;
 import org.apache.cassandra.sidecar.common.data.GossipInfoResponse;
 import org.apache.cassandra.sidecar.common.data.TokenRangeReplicasResponse;
@@ -252,7 +253,7 @@ public class TokenRangeReplicaProvider
                     String hostStatus = gossipInfoEntry.status();
                     if (hostStatus != null && hostStatus.startsWith("BOOT_REPLACE,"))
                     {
-                        return NodeInfo.NodeState.REPLACING.toString();
+                        return NodeState.REPLACING.toString();
                     }
                 }
             }

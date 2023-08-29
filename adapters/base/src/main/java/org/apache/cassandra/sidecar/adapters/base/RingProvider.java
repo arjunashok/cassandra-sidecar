@@ -29,6 +29,8 @@ import com.google.common.net.HostAndPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.sidecar.adapters.base.NodeInfo.NodeState;
+import org.apache.cassandra.sidecar.adapters.base.NodeInfo.NodeStatus;
 import org.apache.cassandra.sidecar.common.JmxClient;
 import org.apache.cassandra.sidecar.common.data.RingEntry;
 import org.apache.cassandra.sidecar.common.data.RingResponse;
@@ -165,9 +167,9 @@ public class RingProvider
         String of(String endpoint)
         {
             if (liveNodes.contains(endpoint))
-                return NodeInfo.NodeStatus.UP.toString();
+                return NodeStatus.UP.toString();
             if (deadNodes.contains(endpoint))
-                return NodeInfo.NodeStatus.DOWN.toString();
+                return NodeStatus.DOWN.toString();
             return UNKNOWN_SHORT;
         }
     }
@@ -191,12 +193,12 @@ public class RingProvider
         String of(String endpoint)
         {
             if (joiningNodes.contains(endpoint))
-                return NodeInfo.NodeState.JOINING.toString();
+                return NodeState.JOINING.toString();
             else if (leavingNodes.contains(endpoint))
-                return NodeInfo.NodeState.LEAVING.toString();
+                return NodeState.LEAVING.toString();
             else if (movingNodes.contains(endpoint))
-                return NodeInfo.NodeState.MOVING.toString();
-            return NodeInfo.NodeState.NORMAL.toString();
+                return NodeState.MOVING.toString();
+            return NodeState.NORMAL.toString();
         }
     }
 

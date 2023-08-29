@@ -213,7 +213,7 @@ dependencies {
         exclude group: 'junit', module: 'junit'
     }
     integrationTestImplementation(files("dtest-jars/${dtestJar}"))
-    integrationTestImplementation("org.apache.cassandra:dtest-api:0.0.15")
+    integrationTestImplementation("org.apache.cassandra:dtest-api:0.0.16")
     // Needed by the Cassandra dtest framework
     integrationTestImplementation("org.junit.vintage:junit-vintage-engine:${junitVersion}")
 }
@@ -326,6 +326,7 @@ tasks.register("integrationTest", Test) {
     useJUnitPlatform() {
         includeTags "integrationTest"
     }
+    maxParallelForks = Runtime.runtime.availableProcessors() * 2
     reports {
         junitXml.enabled = true
         def destDir = Paths.get(rootProject.rootDir.absolutePath, "build", "test-results", "integration").toFile()

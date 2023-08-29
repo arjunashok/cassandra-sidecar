@@ -19,7 +19,7 @@
 package org.apache.cassandra.sidecar.adapters.base;
 
 /**
- * Holder class for Node related
+ * Holder class for valid states and statuses of a node
  */
 public class NodeInfo
 {

@@ -278,24 +278,24 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
         Map<Range<BigInteger>, List<String>> mapping = new HashMap<>();
         // Initial range from Partitioner's MIN_TOKEN. This will include one of the replicas of the moved node since
         // it is adjacent to the range where it is being introduced.
-        mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012",
-                                                         "127.0.0.5:7012"));
+        mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1", "127.0.0.2", "127.0.0.3",
+                                                         "127.0.0.5"));
         // Range including the token of the moved node. Node 5 is added here (and the preceding 3 ranges)
-        mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.3:7012", "127.0.0.4:7012",
-                                                         "127.0.0.5:7012"));
+        mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2", "127.0.0.3", "127.0.0.4",
+                                                         "127.0.0.5"));
         // Split range resulting from the new token. This range is exclusive of the new token and node 5, and
         // has the same replicas as the previous range (as a result of the split)
-        mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.2:7012", "127.0.0.3:7012", "127.0.0.4:7012"));
+        mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.2", "127.0.0.3", "127.0.0.4"));
         // Node 1 is introduced here as it will take ownership of a portion of node 5's previous tokens as a result
         // of the move.
-        mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.3:7012", "127.0.0.4:7012", "127.0.0.5:7012",
-                                                         "127.0.0.1:7012"));
+        mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.3", "127.0.0.4", "127.0.0.5",
+                                                         "127.0.0.1"));
         // Following 2 ranges remain unchanged as the replica-set remain the same post-move
-        mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.4:7012", "127.0.0.5:7012", "127.0.0.1:7012"));
-        mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.5:7012", "127.0.0.1:7012", "127.0.0.2:7012"));
+        mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.4", "127.0.0.5", "127.0.0.1"));
+        mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.5", "127.0.0.1", "127.0.0.2"));
         // Third (wrap-around) replica of the new location of node 5 is added to the existing replica-set
-        mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.1:7012", "127.0.0.2:7012", "127.0.0.3:7012",
-                                                         "127.0.0.5:7012"));
+        mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.1", "127.0.0.2", "127.0.0.3",
+                                                         "127.0.0.5"));
 
         return new HashMap<String, Map<Range<BigInteger>, List<String>>>()
         {
@@ -329,71 +329,71 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
          *
          * Token Allocations:
          * MIN TOKEN: -9223372036854775808
-         * /127.0.0.1:7012:[-5534023222112865487]
-         * /127.0.0.2:7012:[-5534023222112865486]
-         * /127.0.0.3:7012:[-1844674407370955167]
-         * /127.0.0.10:7012:[-3689348814741910327] (New Location)
-         * /127.0.0.4:7012:[-1844674407370955166]
-         * /127.0.0.5:7012:[1844674407370955153]
-         * /127.0.0.6:7012:[1844674407370955154]
-         * /127.0.0.7:7012:[5534023222112865473]
-         * /127.0.0.8:7012:[5534023222112865474]
-         * /127.0.0.9:7012:[9223372036854775793]
-         * /127.0.0.10:7012:[9223372036854775793] (Old Location)
+         * /127.0.0.1:[-5534023222112865487]
+         * /127.0.0.2:[-5534023222112865486]
+         * /127.0.0.3:[-1844674407370955167]
+         * /127.0.0.10:[-3689348814741910327] (New Location)
+         * /127.0.0.4:[-1844674407370955166]
+         * /127.0.0.5:[1844674407370955153]
+         * /127.0.0.6:[1844674407370955154]
+         * /127.0.0.7:[5534023222112865473]
+         * /127.0.0.8:[5534023222112865474]
+         * /127.0.0.9:[9223372036854775793]
+         * /127.0.0.10:[9223372036854775793] (Old Location)
          * MAX TOKEN: 9223372036854775807
          *
          * Pending Ranges:
-         * [-5534023222112865487, -5534023222112865486]=[127.0.0.10:7012]
-         * [-5534023222112865486, -3689348814741910327]=[127.0.0.10:7012]
-         * [-1844674407370955166, 1844674407370955153]=[127.0.0.2:7012]
-         * [1844674407370955153, 1844674407370955154]=[127.0.0.2:7012]
-         * [9223372036854775794, -5534023222112865487]=[127.0.0.10:7012]
+         * [-5534023222112865487, -5534023222112865486]=[127.0.0.10]
+         * [-5534023222112865486, -3689348814741910327]=[127.0.0.10]
+         * [-1844674407370955166, 1844674407370955153]=[127.0.0.2]
+         * [1844674407370955153, 1844674407370955154]=[127.0.0.2]
+         * [9223372036854775794, -5534023222112865487]=[127.0.0.10]
          */
 
         Map<Range<BigInteger>, List<String>> dc1Mapping = new HashMap<>();
         Map<Range<BigInteger>, List<String>> dc2Mapping = new HashMap<>();
         // Replica 2
-        dc1Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
-        dc2Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012",
-                                                            "127.0.0.10:7012"));
+        dc1Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.1", "127.0.0.3", "127.0.0.5"));
+        dc2Mapping.put(expectedRanges.get(0), Arrays.asList("127.0.0.2", "127.0.0.4", "127.0.0.6",
+                                                            "127.0.0.10"));
 
-        dc1Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012"));
-        dc2Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012",
-                                                            "127.0.0.10:7012"));
+        dc1Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.3", "127.0.0.5", "127.0.0.7"));
+        dc2Mapping.put(expectedRanges.get(1), Arrays.asList("127.0.0.2", "127.0.0.4", "127.0.0.6",
+                                                            "127.0.0.10"));
         // Split range resulting from the new token. Part 1 including the new token.
-        dc1Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012"));
-        dc2Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012",
-                                                            "127.0.0.10:7012"));
+        dc1Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.3", "127.0.0.5", "127.0.0.7"));
+        dc2Mapping.put(expectedRanges.get(2), Arrays.asList("127.0.0.4", "127.0.0.6", "127.0.0.8",
+                                                            "127.0.0.10"));
         // Split range resulting from the new token. Part 2 excluding new token (but starting from it)
-        dc1Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.3:7012", "127.0.0.5:7012", "127.0.0.7:7012"));
-        dc2Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012"));
+        dc1Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.3", "127.0.0.5", "127.0.0.7"));
+        dc2Mapping.put(expectedRanges.get(3), Arrays.asList("127.0.0.4", "127.0.0.6", "127.0.0.8"));
 
-        dc1Mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012"));
-        dc2Mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.4:7012", "127.0.0.6:7012", "127.0.0.8:7012"));
+        dc1Mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.5", "127.0.0.7", "127.0.0.9"));
+        dc2Mapping.put(expectedRanges.get(4), Arrays.asList("127.0.0.4", "127.0.0.6", "127.0.0.8"));
 
-        dc1Mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.5:7012", "127.0.0.7:7012", "127.0.0.9:7012"));
-        dc2Mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012",
-                                                            "127.0.0.2:7012"));
+        dc1Mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.5", "127.0.0.7", "127.0.0.9"));
+        dc2Mapping.put(expectedRanges.get(5), Arrays.asList("127.0.0.6", "127.0.0.8", "127.0.0.10",
+                                                            "127.0.0.2"));
 
-        dc1Mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012"));
-        dc2Mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.6:7012", "127.0.0.8:7012", "127.0.0.10:7012",
-                                                            "127.0.0.2:7012"));
+        dc1Mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.7", "127.0.0.9", "127.0.0.1"));
+        dc2Mapping.put(expectedRanges.get(6), Arrays.asList("127.0.0.6", "127.0.0.8", "127.0.0.10",
+                                                            "127.0.0.2"));
 
-        dc1Mapping.put(expectedRanges.get(7), Arrays.asList("127.0.0.7:7012", "127.0.0.9:7012", "127.0.0.1:7012"));
-        dc2Mapping.put(expectedRanges.get(7), Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012"));
+        dc1Mapping.put(expectedRanges.get(7), Arrays.asList("127.0.0.7", "127.0.0.9", "127.0.0.1"));
+        dc2Mapping.put(expectedRanges.get(7), Arrays.asList("127.0.0.8", "127.0.0.10", "127.0.0.2"));
 
-        dc1Mapping.put(expectedRanges.get(8), Arrays.asList("127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012"));
-        dc2Mapping.put(expectedRanges.get(8), Arrays.asList("127.0.0.8:7012", "127.0.0.10:7012", "127.0.0.2:7012"));
+        dc1Mapping.put(expectedRanges.get(8), Arrays.asList("127.0.0.9", "127.0.0.1", "127.0.0.3"));
+        dc2Mapping.put(expectedRanges.get(8), Arrays.asList("127.0.0.8", "127.0.0.10", "127.0.0.2"));
 
-        dc1Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.9:7012", "127.0.0.1:7012", "127.0.0.3:7012"));
-        dc2Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012"));
+        dc1Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.9", "127.0.0.1", "127.0.0.3"));
+        dc2Mapping.put(expectedRanges.get(9), Arrays.asList("127.0.0.10", "127.0.0.2", "127.0.0.4"));
 
-        dc1Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
-        dc2Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.10:7012", "127.0.0.2:7012", "127.0.0.4:7012"));
+        dc1Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.1", "127.0.0.3", "127.0.0.5"));
+        dc2Mapping.put(expectedRanges.get(10), Arrays.asList("127.0.0.10", "127.0.0.2", "127.0.0.4"));
         // Replica 3
-        dc1Mapping.put(expectedRanges.get(11), Arrays.asList("127.0.0.1:7012", "127.0.0.3:7012", "127.0.0.5:7012"));
-        dc2Mapping.put(expectedRanges.get(11), Arrays.asList("127.0.0.2:7012", "127.0.0.4:7012", "127.0.0.6:7012",
-                                                             "127.0.0.10:7012"));
+        dc1Mapping.put(expectedRanges.get(11), Arrays.asList("127.0.0.1", "127.0.0.3", "127.0.0.5"));
+        dc2Mapping.put(expectedRanges.get(11), Arrays.asList("127.0.0.2", "127.0.0.4", "127.0.0.6",
+                                                             "127.0.0.10"));
 
         Map<String, Map<Range<BigInteger>, List<String>>> multiDCMapping
         = new HashMap<String, Map<Range<BigInteger>, List<String>>>()

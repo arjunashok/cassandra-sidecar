@@ -22,6 +22,7 @@ import java.math.BigInteger;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -137,7 +138,6 @@ public class TokenRangeReplicaProvider
     private List<ReplicaInfo> writeReplicasFromPendingRanges(List<TokenRangeReplicas> tokenRangeReplicaSet,
                                                              Map<String, String> hostToDatacenter)
     {
-//        Map<String, String> hostToDatacenter = buildHostToDatacenterMapping(tokenRangeReplicaSet);
         // Candidate write-replica mappings are normalized by consolidating overlapping ranges
         return TokenRangeReplicas.normalize(tokenRangeReplicaSet).stream()
                                  .map(range -> {
@@ -167,12 +167,11 @@ public class TokenRangeReplicaProvider
     private List<ReplicaInfo> readReplicasFromReplicaMapping(List<TokenRangeReplicas> naturalTokenRangeReplicas,
                                                              Map<String, String> hostToDatacenter)
     {
-        Map<String, String> hostToDatacenter2 = buildHostToDatacenterMapping(naturalTokenRangeReplicas);
         return naturalTokenRangeReplicas.stream()
                                         .sorted()
                                         .map(rep -> {
                                             Map<String, List<String>> replicasByDc
-                                            = replicasByDataCenter(hostToDatacenter2, rep.replicaSet());
+                                            = replicasByDataCenter(hostToDatacenter, rep.replicaSet());
 
                                             return new ReplicaInfo(rep.start().toString(),
                                                                    rep.end().toString(),
@@ -209,8 +208,15 @@ public class TokenRangeReplicaProvider
     private static Map<String, List<String>> replicasByDataCenter(Map<String, String> hostToDatacenter,
                                                                   Collection<String> replicas)
     {
-        return replicas.stream().collect(Collectors.groupingBy(hostToDatacenter::get,
-                                                               Collectors.filtering(replicas::contains, toList())));
+
+        Map<String, List<String>> dcReplicaMapping = new HashMap<>();
+
+        replicas.stream()
+            .filter(hostToDatacenter::containsKey)
+            .forEach(item ->
+                     dcReplicaMapping.computeIfAbsent(hostToDatacenter.get(item), v -> new ArrayList<>())
+                                     .add(item));
+        return dcReplicaMapping;
     }
 
     /**

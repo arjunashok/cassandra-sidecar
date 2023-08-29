@@ -194,14 +194,23 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
             assertThat(expectedRangeMapping).containsKey("datacenter1");
             assertThat(expectedRangeMapping.get("datacenter1")).containsKey(range);
             // Replicaset for the same range match expected
-            assertThat(r.replicasByDatacenter().get("datacenter1"))
+            List<String> replicaSetNoPort = r.replicasByDatacenter().get("datacenter1")
+                                             .stream()
+                                             .map(node -> node.split(":")[0])
+                                             .collect(Collectors.toList());
+            assertThat(replicaSetNoPort)
             .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter1").get(range));
 
             if (annotation.numDcs() > 1)
             {
                 assertThat(expectedRangeMapping).containsKey("datacenter2");
                 assertThat(expectedRangeMapping.get("datacenter2")).containsKey(range);
-                assertThat(r.replicasByDatacenter().get("datacenter2"))
+
+                List<String> replicaSetNoPortDc2 = r.replicasByDatacenter().get("datacenter2")
+                                                    .stream()
+                                                    .map(node -> node.split(":")[0])
+                                                    .collect(Collectors.toList());
+                assertThat(replicaSetNoPortDc2)
                 .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter2").get(range));
             }
         }

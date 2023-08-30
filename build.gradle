@@ -326,7 +326,6 @@ tasks.register("integrationTest", Test) {
     useJUnitPlatform() {
         includeTags "integrationTest"
     }
-    maxParallelForks = Runtime.runtime.availableProcessors() * 2
     reports {
         junitXml.enabled = true
         def destDir = Paths.get(rootProject.rootDir.absolutePath, "build", "test-results", "integration").toFile()

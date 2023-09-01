@@ -18,6 +18,8 @@
 
 package org.apache.cassandra.sidecar.adapters.base;
 
+import java.util.Locale;
+
 /**
  * Holder class for valid states and statuses of a node
  */
@@ -28,22 +30,23 @@ public class NodeInfo
      */
     public enum NodeState
     {
-        JOINING("Joining"),
-        LEAVING("Leaving"),
-        MOVING("Moving"),
-        NORMAL("Normal"),
-        REPLACING("Replacing");
+        JOINING,
+        LEAVING,
+        MOVING,
+        NORMAL,
+        REPLACING;
 
-        @Override
-        public String toString()
+        private final String displayName;
+
+        NodeState()
         {
-            return state;
+            String firstChar = String.valueOf(name().charAt(0)).toLowerCase(Locale.ROOT);
+            displayName = name().toLowerCase().replaceFirst(firstChar, firstChar.toUpperCase(Locale.ROOT));
         }
-        private final String state;
 
-        NodeState(String state)
+        public String displayName()
         {
-            this.state = state;
+            return displayName;
         }
     }
 
@@ -52,18 +55,18 @@ public class NodeInfo
      */
     public enum NodeStatus
     {
-        UP("Up"),
-        DOWN("Down");
+        UP,
+        DOWN;
 
-        @Override
-        public String toString()
+        private final String displayName;
+        NodeStatus()
         {
-            return status;
+            String firstChar = String.valueOf(name().charAt(0)).toLowerCase(Locale.ROOT);
+            displayName = name().toLowerCase().replaceFirst(firstChar, firstChar.toUpperCase(Locale.ROOT));
         }
-        private final String status;
-        NodeStatus(String status)
+        public String displayName()
         {
-            this.status = status;
+            return displayName;
         }
     }
 }

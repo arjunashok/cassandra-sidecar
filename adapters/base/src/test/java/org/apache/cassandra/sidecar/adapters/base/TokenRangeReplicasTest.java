@@ -30,7 +30,6 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -39,23 +38,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class TokenRangeReplicasTest
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(TokenRangeReplicasTest.class);
-
-    private boolean hasOverlaps(List<TokenRangeReplicas> rangeList)
-    {
-        Collections.sort(rangeList);
-        for (int c = 0, i = 1; i < rangeList.size(); i++)
-        {
-            if (rangeList.get(c++).end().compareTo(rangeList.get(i).start()) > 0) return true;
-        }
-        return false;
-    }
-
-    private boolean checkContains(List<TokenRangeReplicas> resultList, TokenRangeReplicas expected)
-    {
-        return resultList.stream()
-                         .map(TokenRangeReplicas::toString)
-                         .anyMatch(r -> r.equals(expected.toString()));
-    }
 
     // non-overlapping ranges
     @Test
@@ -66,6 +48,7 @@ public class TokenRangeReplicasTest
         List<TokenRangeReplicas> rangeList = TokenRangeReplicas.normalize(simpleList);
         LOGGER.info("Result:" + rangeList);
         assertThat(hasOverlaps(rangeList)).isFalse();
+        assertThat(simpleList).containsExactlyInAnyOrderElementsOf(rangeList);
     }
 
     @Test
@@ -533,17 +516,6 @@ public class TokenRangeReplicasTest
         assertThat(isPartOfRanges(range3.get(0), range4)).isFalse();
     }
 
-    private boolean isPartOfRanges(TokenRangeReplicas range, List<TokenRangeReplicas> rangeList)
-    {
-        return rangeList.stream().anyMatch(r -> r.contains(range));
-    }
-
-    private boolean intersectsWithRanges(TokenRangeReplicas range, List<TokenRangeReplicas> rangeList)
-    {
-        return rangeList.stream().anyMatch(r -> r.intersects(range));
-    }
-
-
     @Test
     void testIntersectRanges()
     {
@@ -553,7 +525,8 @@ public class TokenRangeReplicasTest
         List<TokenRangeReplicas> range2 = TokenRangeReplicas.generateTokenRangeReplicas(
         BigInteger.valueOf(9), BigInteger.valueOf(12), Partitioner.Murmur3, new HashSet<>());
         assertThat(intersectsWithRanges(range2.get(0), range1)).isTrue();
-        assertThrows(IllegalStateException.class, () -> intersectsWithRanges(range1.get(0), range2)); // Unsorted
+        // intersect check with out-of-order ranges
+        assertThat(intersectsWithRanges(range1.get(0), range2)).isTrue();
 
         // Intersection at border
         List<TokenRangeReplicas> range3 = TokenRangeReplicas.generateTokenRangeReplicas(
@@ -563,7 +536,8 @@ public class TokenRangeReplicasTest
 
 
         assertThat(intersectsWithRanges(range4.get(0), range3)).isFalse();
-        assertThrows(IllegalStateException.class, () -> intersectsWithRanges(range3.get(0), range4)); // Unsorted
+        // intersect check with out-of-order ranges
+        assertThat(intersectsWithRanges(range3.get(0), range4)).isFalse();
 
         // Intersection as superset
         List<TokenRangeReplicas> range5 = TokenRangeReplicas.generateTokenRangeReplicas(
@@ -574,9 +548,36 @@ public class TokenRangeReplicasTest
         assertThat(intersectsWithRanges(range6.get(0), range5)).isTrue();
     }
 
+    private boolean hasOverlaps(List<TokenRangeReplicas> rangeList)
+    {
+        Collections.sort(rangeList);
+        for (int c = 0, i = 1; i < rangeList.size(); i++)
+        {
+            if (rangeList.get(c++).end().compareTo(rangeList.get(i).start()) > 0) return true;
+        }
+        return false;
+    }
+
+    private boolean checkContains(List<TokenRangeReplicas> resultList, TokenRangeReplicas expected)
+    {
+        return resultList.stream()
+                         .map(TokenRangeReplicas::toString)
+                         .anyMatch(r -> r.equals(expected.toString()));
+    }
+
+    private boolean isPartOfRanges(TokenRangeReplicas range, List<TokenRangeReplicas> rangeList)
+    {
+        return rangeList.stream().anyMatch(r -> r.contains(range));
+    }
+
+    private boolean intersectsWithRanges(TokenRangeReplicas range, List<TokenRangeReplicas> rangeList)
+    {
+        return rangeList.stream().anyMatch(r -> r.intersects(range));
+    }
+
     private List<TokenRangeReplicas> createSimpleTokenRangeReplicaList()
     {
-        return Arrays.asList(
+        List<TokenRangeReplicas> simpleList = Arrays.asList(
         TokenRangeReplicas.generateTokenRangeReplicas(Partitioner.Random.minToken,
                                                       new BigInteger("10"),
                                                       Partitioner.Random,
@@ -590,12 +591,14 @@ public class TokenRangeReplicasTest
                                                       Partitioner.Random,
                                                       new HashSet<>(Arrays.asList("h6", "h7"))).get(0)
         );
+        assertThat(hasOverlaps(simpleList)).isFalse();
+        return simpleList;
     }
 
     // 2. Simple single overlap (consuming) => superset + no changes to others [Merge]
     private List<TokenRangeReplicas> createOverlappingTokenRangeReplicaList()
     {
-        return Arrays.asList(
+        List<TokenRangeReplicas> rangeWithOverlaps = Arrays.asList(
         TokenRangeReplicas.generateTokenRangeReplicas(Partitioner.Random.minToken,
                                                       new BigInteger("10"),
                                                       Partitioner.Random,
@@ -613,12 +616,14 @@ public class TokenRangeReplicasTest
                                                       Partitioner.Random,
                                                       new HashSet<>(Arrays.asList("h9"))).get(0)
         );
+        assertThat(hasOverlaps(rangeWithOverlaps)).isTrue();
+        return rangeWithOverlaps;
     }
 
     // 3. Single overlap - cutting [Merge + Split]
     private List<TokenRangeReplicas> createPartialOverlappingTokenRangeReplicaList()
     {
-        return Arrays.asList(
+        List<TokenRangeReplicas> rangeWithOverlaps = Arrays.asList(
         TokenRangeReplicas.generateTokenRangeReplicas(new BigInteger("-1"),
                                                       new BigInteger("10"),
                                                       Partitioner.Random,
@@ -636,12 +641,14 @@ public class TokenRangeReplicasTest
                                                       Partitioner.Random,
                                                       new HashSet<>(Arrays.asList("h9"))).get(0)
         );
+        assertThat(hasOverlaps(rangeWithOverlaps)).isTrue();
+        return rangeWithOverlaps;
     }
 
     // 4. Multi-overlaps
     private List<TokenRangeReplicas> createMultipleOverlappingTokenRangeReplicaList()
     {
-        return Arrays.asList(
+        List<TokenRangeReplicas> rangeWithOverlaps = Arrays.asList(
         TokenRangeReplicas.generateTokenRangeReplicas(new BigInteger("-1"),
                                                       new BigInteger("15"),
                                                       Partitioner.Random,
@@ -659,6 +666,9 @@ public class TokenRangeReplicasTest
                                                       Partitioner.Random,
                                                       new HashSet<>(Arrays.asList("h9"))).get(0)
         );
+        assertThat(hasOverlaps(rangeWithOverlaps)).isTrue();
+        return rangeWithOverlaps;
+        
     }
 
     // 5. Overlaps w/ wrap-around
@@ -691,12 +701,19 @@ public class TokenRangeReplicasTest
 
 
         createdList.addAll(wrappedList);
+        assertThat(hasWrappedRange(createdList)).isFalse();
+        assertThat(hasOverlaps(createdList)).isTrue();
         return createdList;
+    }
+
+    private boolean hasWrappedRange(List<TokenRangeReplicas> createdList)
+    {
+        return createdList.stream().anyMatch(r -> r.start().compareTo(r.end()) > 0);
     }
 
     private List<TokenRangeReplicas> createIntersectingTokenRangeReplicaList()
     {
-        return Arrays.asList(
+        List<TokenRangeReplicas> rangeWithOverlaps = Arrays.asList(
         TokenRangeReplicas.generateTokenRangeReplicas(new BigInteger("10"),
                                                       new BigInteger("40"),
                                                       Partitioner.Random,
@@ -714,11 +731,13 @@ public class TokenRangeReplicasTest
                                                       Partitioner.Random,
                                                       new HashSet<>(Arrays.asList("h9"))).get(0)
         );
+        assertThat(hasOverlaps(rangeWithOverlaps)).isTrue();
+        return rangeWithOverlaps;
     }
 
     private List<TokenRangeReplicas> createIntersectingTokenRangeReplicaList2()
     {
-        return Arrays.asList(
+        List<TokenRangeReplicas> rangeWithOverlaps = Arrays.asList(
         TokenRangeReplicas.generateTokenRangeReplicas(new BigInteger("10"),
                                                       new BigInteger("40"),
                                                       Partitioner.Random,
@@ -736,11 +755,14 @@ public class TokenRangeReplicasTest
                                                       Partitioner.Random,
                                                       new HashSet<>(Arrays.asList("h9"))).get(0)
         );
+        assertThat(hasOverlaps(rangeWithOverlaps)).isTrue();
+        return rangeWithOverlaps;
+
     }
 
     private List<TokenRangeReplicas> createIntersectingTokenRangeReplicaList3()
     {
-        return Arrays.asList(
+        List<TokenRangeReplicas> rangeWithOverlaps = Arrays.asList(
         TokenRangeReplicas.generateTokenRangeReplicas(new BigInteger("10"),
                                                       new BigInteger("40"),
                                                       Partitioner.Random,
@@ -758,6 +780,9 @@ public class TokenRangeReplicasTest
                                                       Partitioner.Random,
                                                       new HashSet<>(Arrays.asList("h9"))).get(0)
         );
+        assertThat(hasOverlaps(rangeWithOverlaps)).isTrue();
+        return rangeWithOverlaps;
+
     }
 
 
@@ -787,6 +812,9 @@ public class TokenRangeReplicasTest
                                                       new HashSet<>(Arrays.asList("h9")));
         createdList.addAll(wrappedRange);
         assertThat(wrappedRange).hasSize(2);
+        // We should not have wrapped ranges as generateTokenRangeReplicas unwraps them, and we validate this below
+        assertThat(hasWrappedRange(createdList)).isFalse();
+        assertThat(hasOverlaps(createdList)).isTrue();
         return createdList;
     }
 
@@ -818,6 +846,9 @@ public class TokenRangeReplicasTest
         assertThat(wrappedRange1).hasSize(2);
         createdList.addAll(wrappedRange2);
         assertThat(wrappedRange2).hasSize(2);
+        // We should not have wrapped ranges as generateTokenRangeReplicas unwraps them, and we validate this below
+        assertThat(hasWrappedRange(createdList)).isFalse();
+        assertThat(hasOverlaps(createdList)).isTrue();
 
         return createdList;
     }

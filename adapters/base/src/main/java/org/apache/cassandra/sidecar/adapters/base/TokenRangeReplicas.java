@@ -160,11 +160,10 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
      */
     boolean intersects(TokenRangeReplicas other)
     {
-        if (this.compareTo(other) > 0)
-            throw new IllegalStateException(
-            String.format("Token ranges - (this:%s other:%s) are not ordered", this, other));
-
-        return this.end.compareTo(other.start) > 0 && this.start.compareTo(other.end) < 0; // Start exclusive (DONE)
+        boolean inOrder = this.compareTo(other) <= 0;
+        TokenRangeReplicas first = inOrder ? this : other;
+        TokenRangeReplicas last = inOrder ? other : this;
+        return first.end.compareTo(last.start) > 0 && first.start.compareTo(last.end) < 0;
     }
 
     /**
@@ -324,10 +323,11 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
      * @return cursor to the subsequent non-intersecting range
      */
     static TokenRangeReplicas processIntersectingRanges(List<TokenRangeReplicas> output,
-                                                                  Iterator<TokenRangeReplicas> iter,
-                                                                  TokenRangeReplicas current,
-                                                                  TokenRangeReplicas next)
+                                                        Iterator<TokenRangeReplicas> iter,
+                                                        TokenRangeReplicas current,
+                                                        TokenRangeReplicas next)
     {
+        // min-heap with a comparator comparing the ends of ranges
         PriorityQueue<TokenRangeReplicas> rangeHeap =
         new PriorityQueue<>((n1, n2) -> (!n1.end.equals(n2.end())) ?
                                         n1.end().compareTo(n2.end()) : n1.compareTo(n2));
@@ -378,7 +378,7 @@ public class TokenRangeReplicas implements Comparable<TokenRangeReplicas>
         // Remaining intersecting ranges from heap are processed
         while (!rangeHeap.isEmpty())
         {
-            LOGGER.info("Non-empty queue:" + rangeHeap.size());
+            LOGGER.debug("Non-empty heap while resolving intersecting ranges:" + rangeHeap.size());
             TokenRangeReplicas nextVal = rangeHeap.peek();
             BigInteger newStart = output.isEmpty() ? nextVal.start() : output.get(output.size() - 1).end();
             // Corner case w/ common end ranges - we do not add redundant single token range

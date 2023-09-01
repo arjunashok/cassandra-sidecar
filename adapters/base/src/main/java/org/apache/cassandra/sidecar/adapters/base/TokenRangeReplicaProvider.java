@@ -52,6 +52,10 @@ import static org.apache.cassandra.sidecar.adapters.base.TokenRangeReplicas.gene
  */
 public class TokenRangeReplicaProvider
 {
+    private interface KeyspaceToRangeMappingFunc extends Function<String, Map<List<String>, List<String>>>
+    {
+    }
+
     private final JmxClient jmxClient;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TokenRangeReplicaProvider.class);
@@ -67,21 +71,10 @@ public class TokenRangeReplicaProvider
 
         StorageJmxOperations storage = initializeStorageOps();
 
-        // Retrieve map of primary token ranges to endpoints that describe the ring topology
-        Map<List<String>, List<String>> naturalReplicaMappings = storage.getRangeToEndpointWithPortMap(keyspace);
-        LOGGER.debug("Natural token range mappingsfor keyspace={}, pendingRangeMappings={}",
-                     keyspace,
-                     naturalReplicaMappings);
-        // Pending ranges include bootstrap tokens and leaving endpoints as represented in the Cassandra TokenMetadata
-        Map<List<String>, List<String>> pendingRangeMappings = storage.getPendingRangeToEndpointWithPortMap(keyspace);
-
-        LOGGER.debug("Pending token range mappings for keyspace={}, pendingRangeMappings={}",
-                     keyspace,
-                     pendingRangeMappings);
-        List<TokenRangeReplicas> naturalTokenRangeReplicas = transformRangeMappings(naturalReplicaMappings,
-                                                                                    partitioner);
-        List<TokenRangeReplicas> pendingTokenRangeReplicas = transformRangeMappings(pendingRangeMappings,
-                                                                                    partitioner);
+        List<TokenRangeReplicas> naturalTokenRangeReplicas =
+            getTokenRangeReplicas("Natural", keyspace, partitioner, storage::getRangeToEndpointWithPortMap);
+        List<TokenRangeReplicas> pendingTokenRangeReplicas =
+            getTokenRangeReplicas("Pending", keyspace, partitioner, storage::getPendingRangeToEndpointWithPortMap);
 
         // Merge natural and pending range replicas to generate candidates for write-replicas
         List<TokenRangeReplicas> allTokenRangeReplicas = new ArrayList<>(naturalTokenRangeReplicas);
@@ -98,6 +91,28 @@ public class TokenRangeReplicaProvider
         return new TokenRangeReplicasResponse(replicaToStateMap,
                                               writeReplicas,
                                               readReplicas);
+    }
+
+    private List<TokenRangeReplicas> getTokenRangeReplicas(String rangeType, String keyspace, Partitioner partitioner,
+                                                           KeyspaceToRangeMappingFunc rangeMappingSupplier)
+    {
+        // Pending ranges include bootstrap tokens and leaving endpoints as represented in the Cassandra TokenMetadata
+        Map<List<String>, List<String>> rangeMappings = rangeMappingSupplier.apply(keyspace);
+        LOGGER.debug(rangeType + " token range mappings for keyspace={}, rangeMappings={}", keyspace, rangeMappings);
+        return transformRangeMappings(rangeMappings, partitioner);
+    }
+
+    private List<TokenRangeReplicas> transformRangeMappings(Map<List<String>, List<String>> replicaMappings,
+                                                            Partitioner partitioner)
+    {
+        return replicaMappings.entrySet()
+                              .stream()
+                              .map(entry -> generateTokenRangeReplicas(new BigInteger(entry.getKey().get(0)),
+                                                                       new BigInteger(entry.getKey().get(1)),
+                                                                       partitioner,
+                                                                       new HashSet<>(entry.getValue())))
+                              .flatMap(Collection::stream)
+                              .collect(toList());
     }
 
     private Map<String, String> replicaToStateMap(List<TokenRangeReplicas> replicaSet, StorageJmxOperations storage)
@@ -140,44 +155,27 @@ public class TokenRangeReplicaProvider
     {
         // Candidate write-replica mappings are normalized by consolidating overlapping ranges
         return TokenRangeReplicas.normalize(tokenRangeReplicaSet).stream()
-                                 .map(range -> {
-                                     Map<String, List<String>> replicasByDc =
-                                     replicasByDataCenter(hostToDatacenter, range.replicaSet());
-                                     return new ReplicaInfo(range.start().toString(),
-                                                            range.end().toString(),
-                                                            replicasByDc);
-                                 })
+                                 .map(range -> buildReplicaInfo(hostToDatacenter, range))
                                  .collect(toList());
     }
-
-    private List<TokenRangeReplicas> transformRangeMappings(Map<List<String>, List<String>> replicaMappings,
-                                                            Partitioner partitioner)
-    {
-        return replicaMappings.entrySet()
-                              .stream()
-                              .map(entry -> generateTokenRangeReplicas(new BigInteger(entry.getKey().get(0)),
-                                                                       new BigInteger(entry.getKey().get(1)),
-                                                                       partitioner,
-                                                                       new HashSet<>(entry.getValue())))
-                              .flatMap(Collection::stream)
-                              .collect(toList());
-    }
-
 
     private List<ReplicaInfo> readReplicasFromReplicaMapping(List<TokenRangeReplicas> naturalTokenRangeReplicas,
                                                              Map<String, String> hostToDatacenter)
     {
         return naturalTokenRangeReplicas.stream()
                                         .sorted()
-                                        .map(rep -> {
-                                            Map<String, List<String>> replicasByDc
-                                            = replicasByDataCenter(hostToDatacenter, rep.replicaSet());
-
-                                            return new ReplicaInfo(rep.start().toString(),
-                                                                   rep.end().toString(),
-                                                                   replicasByDc);
-                                        })
+                                        .map(rep -> buildReplicaInfo(hostToDatacenter, rep))
                                         .collect(toList());
+    }
+
+    @NotNull
+    private static ReplicaInfo buildReplicaInfo(Map<String, String> hostToDatacenter, TokenRangeReplicas rep)
+    {
+        Map<String, List<String>> replicasByDc = replicasByDataCenter(hostToDatacenter, rep.replicaSet());
+
+        return new ReplicaInfo(rep.start().toString(),
+                               rep.end().toString(),
+                               replicasByDc);
     }
 
     private Map<String, String> buildHostToDatacenterMapping(List<TokenRangeReplicas> replicaSet)
@@ -259,7 +257,7 @@ public class TokenRangeReplicaProvider
                     String hostStatus = gossipInfoEntry.status();
                     if (hostStatus != null && hostStatus.startsWith("BOOT_REPLACE,"))
                     {
-                        return NodeState.REPLACING.toString();
+                        return NodeState.REPLACING.displayName();
                     }
                 }
             }

@@ -167,9 +167,9 @@ public class RingProvider
         String of(String endpoint)
         {
             if (liveNodes.contains(endpoint))
-                return NodeStatus.UP.toString();
+                return NodeStatus.UP.displayName();
             if (deadNodes.contains(endpoint))
-                return NodeStatus.DOWN.toString();
+                return NodeStatus.DOWN.displayName();
             return UNKNOWN_SHORT;
         }
     }
@@ -193,12 +193,12 @@ public class RingProvider
         String of(String endpoint)
         {
             if (joiningNodes.contains(endpoint))
-                return NodeState.JOINING.toString();
+                return NodeState.JOINING.displayName();
             else if (leavingNodes.contains(endpoint))
-                return NodeState.LEAVING.toString();
+                return NodeState.LEAVING.displayName();
             else if (movingNodes.contains(endpoint))
-                return NodeState.MOVING.toString();
-            return NodeState.NORMAL.toString();
+                return NodeState.MOVING.displayName();
+            return NodeState.NORMAL.displayName();
         }
     }
 

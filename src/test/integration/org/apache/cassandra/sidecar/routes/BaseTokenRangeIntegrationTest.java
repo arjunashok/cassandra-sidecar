@@ -51,7 +51,7 @@ import static org.apache.cassandra.distributed.shared.NetworkTopology.networkTop
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Test the token range replica mapping endpoint with cassandra container.
+ * Test the token range replica mapping endpoint with the in-jvm dtest framework.
  */
 public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
 {
@@ -71,8 +71,6 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
                                                                                       new BigInteger(r.end())))
                                                            .collect(Collectors.toList());
 
-
-        assertThat(writeRanges.size()).isEqualTo(writeReplicaSet.size());
         assertThat(writeRanges).containsExactlyElementsOf(expectedRanges);
 
         //Sorted and Overlap check
@@ -139,22 +137,33 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
 
     protected List<Range<BigInteger>> generateExpectedRanges()
     {
+        return generateExpectedRanges(true);
+    }
+
+
+    protected List<Range<BigInteger>> generateExpectedRanges(boolean isCrossDCKeyspace)
+    {
+
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        int nodeCount = (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs();
+        // For single DC keyspaces, the ranges are initially allocated replicas from both DCs. As a result,
+        // we will take into account the node count across all DCs. It is only while accounting for the new/joining
+        // nodes that we will limit the nodes to the single DC, as the pending nodes for the given keyspace will
+        // exclude the nodes from other DCs.
+
+        int nodeCount = isCrossDCKeyspace ?
+                        (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs() :
+                        (annotation.nodesPerDc() * annotation.numDcs()) + annotation.newNodesPerDc();
+
         return generateExpectedRanges(nodeCount);
     }
 
     protected List<Range<BigInteger>> generateExpectedRanges(int nodeCount)
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        TokenSupplier tokenSupplier = (annotation.numDcs() > 1) ?
-                                      MultiDcTokenSupplier.evenlyDistributedTokens(
-                                      annotation.nodesPerDc() + annotation.newNodesPerDc(),
-                                      annotation.numDcs(),
-                                      1) :
-                                      TokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc() +
-                                                                            annotation.newNodesPerDc(),
-                                                                            1);
+        TokenSupplier tokenSupplier = MultiDcTokenSupplier.evenlyDistributedTokens(
+        annotation.nodesPerDc() + annotation.newNodesPerDc(),
+        annotation.numDcs(),
+        1);
 
         List<Range<BigInteger>> expectedRanges = new ArrayList<>();
         BigInteger startToken = Partitioner.Murmur3.minToken;
@@ -183,9 +192,17 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
     }
 
     protected void validateWriteReplicaMappings(List<TokenRangeReplicasResponse.ReplicaInfo> writeReplicas,
-                                              Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMapping)
+                                                Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMapping)
+    {
+        validateWriteReplicaMappings(writeReplicas, expectedRangeMapping, true);
+    }
+
+    protected void validateWriteReplicaMappings(List<TokenRangeReplicasResponse.ReplicaInfo> writeReplicas,
+                                                Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMapping,
+                                                boolean isCrossDCKeyspace)
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        // Validates the no. of ranges in the write-replica mappings match the no. of expected ranges
         assertThat(writeReplicas).hasSize(expectedRangeMapping.get("datacenter1").size());
         for (TokenRangeReplicasResponse.ReplicaInfo r: writeReplicas)
         {
@@ -201,7 +218,7 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
             assertThat(replicaSetNoPort)
             .containsExactlyInAnyOrderElementsOf(expectedRangeMapping.get("datacenter1").get(range));
 
-            if (annotation.numDcs() > 1)
+            if (annotation.numDcs() > 1 && isCrossDCKeyspace)
             {
                 assertThat(expectedRangeMapping).containsKey("datacenter2");
                 assertThat(expectedRangeMapping.get("datacenter2")).containsKey(range);

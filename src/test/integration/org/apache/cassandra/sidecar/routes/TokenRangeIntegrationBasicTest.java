@@ -33,7 +33,7 @@ import org.apache.cassandra.testing.CassandraIntegrationTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Test the token range replica mapping endpoint with cassandra container.
+ * Test the token range replica mapping endpoint with the in-jvm dtest framework.
  */
 @ExtendWith(VertxExtension.class)
 public class TokenRangeIntegrationBasicTest extends BaseTokenRangeIntegrationTest

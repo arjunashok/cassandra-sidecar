@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -111,17 +112,15 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
         }
     }
 
-    protected UpgradeableCluster getMultiDCCluster(int numNodes,
-                                                   int numDcs,
-                                                   BiConsumer<ClassLoader, Integer> initializer,
+    protected UpgradeableCluster getMultiDCCluster(BiConsumer<ClassLoader, Integer> initializer,
                                                    ConfigurableCassandraTestContext cassandraTestContext)
     throws IOException
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        TokenSupplier mdcTokenSupplier =
-        MultiDcTokenSupplier.evenlyDistributedTokens(numNodes,
-                                                     numDcs,
-                                                     1);
+        TokenSupplier mdcTokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                   annotation.newNodesPerDc(),
+                                                                                   annotation.numDcs(),
+                                                                                   1);
 
         int totalNodeCount = (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs();
         return cassandraTestContext.configureAndStartCluster(
@@ -160,25 +159,33 @@ public class BaseTokenRangeIntegrationTest extends IntegrationTestBase
     protected List<Range<BigInteger>> generateExpectedRanges(int nodeCount)
     {
         CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        TokenSupplier tokenSupplier = MultiDcTokenSupplier.evenlyDistributedTokens(
-        annotation.nodesPerDc() + annotation.newNodesPerDc(),
-        annotation.numDcs(),
-        1);
+        TokenSupplier tokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                annotation.newNodesPerDc(),
+                                                                                annotation.numDcs(),
+                                                                                1);
+
+        TreeSet<BigInteger> tokens = new TreeSet<>();
+        int node = 1;
+        while (node <= nodeCount)
+        {
+            tokens.add(new BigInteger(tokenSupplier.tokens(node++).stream().findFirst().get()));
+        }
 
         List<Range<BigInteger>> expectedRanges = new ArrayList<>();
         BigInteger startToken = Partitioner.Murmur3.minToken;
         BigInteger endToken = Partitioner.Murmur3.maxToken;
-        int node = 1;
-        BigInteger prevToken = new BigInteger(tokenSupplier.tokens(node++).stream().findFirst().get());
+
+        BigInteger prevToken = tokens.pollFirst();
         Range<BigInteger> firstRange = Range.openClosed(startToken, prevToken);
         expectedRanges.add(firstRange);
-        while (node <= nodeCount)
+
+        for (BigInteger token : tokens)
         {
-            BigInteger currentToken = new BigInteger(tokenSupplier.tokens(node).stream().findFirst().get());
+            BigInteger currentToken = token;
             expectedRanges.add(Range.openClosed(prevToken, currentToken));
             prevToken = currentToken;
-            node++;
         }
+
         expectedRanges.add(Range.openClosed(prevToken, endToken));
         return expectedRanges;
     }

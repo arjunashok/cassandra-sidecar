@@ -66,7 +66,7 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Node movement scenarios integration tests for token range replica mapping endpoint with cassandra container.
+ * Node movement scenarios integration tests for token range replica mapping endpoint with the in-jvm dtest framework.
  */
 @ExtendWith(VertxExtension.class)
 public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTest
@@ -78,10 +78,16 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
     void retrieveMappingWithKeyspaceMovingNode(VertxTestContext context,
                                                ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        TokenSupplier tokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                annotation.newNodesPerDc(),
+                                                                                annotation.numDcs(),
+                                                                                1);
 
-        UpgradeableCluster cluster =
-        cassandraTestContext.configureAndStartCluster(builder ->
-                                                      builder.withInstanceInitializer(BBHelperMovingNode::install));
+        UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(builder -> {
+            builder.withInstanceInitializer(BBHelperMovingNode::install);
+            builder.withTokenSupplier(tokenSupplier);
+        });
 
         long moveTarget = getMoveTargetToken(cluster);
         runMovingTestScenario(context,
@@ -111,11 +117,7 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
                                                ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
 
-        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        UpgradeableCluster cluster = getMultiDCCluster(annotation.nodesPerDc(),
-                                                       annotation.numDcs(),
-                                                       BBHelperMovingNodeMultiDC::install,
-                                                       cassandraTestContext);
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperMovingNodeMultiDC::install, cassandraTestContext);
 
         long moveTarget = getMoveTargetToken(cluster);
         runMovingTestScenario(context,
@@ -125,8 +127,6 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
                               generateExpectedRangeMappingMovingNodeMultiDC(moveTarget),
                               moveTarget);
     }
-
-    // TODO: Multiple replica-safe node movements in same DC, different DCs
 
     void runMovingTestScenario(VertxTestContext context,
                                CountDownLatch transientStateStart,
@@ -221,11 +221,11 @@ public class TokenRangeIntegrationMovingTest extends BaseTokenRangeIntegrationTe
     private List<Range<BigInteger>> getMovingNodesExpectedRanges(int initialNodeCount, int numDcs, long moveTo)
     {
         boolean moveHandled = false;
-
-        TokenSupplier tokenSupplier = (numDcs > 1) ?
-                                      MultiDcTokenSupplier.evenlyDistributedTokens(initialNodeCount, numDcs, 1) :
-                                      TokenSupplier.evenlyDistributedTokens(initialNodeCount, 1);
-
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        TokenSupplier tokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                annotation.newNodesPerDc(),
+                                                                                annotation.numDcs(),
+                                                                                1);
 
         List<Range<BigInteger>> expectedRanges = new ArrayList<>();
         BigInteger startToken = Partitioner.Murmur3.minToken;

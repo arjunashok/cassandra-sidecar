@@ -62,7 +62,7 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Cluster shrink scenarios integration tests for token range replica mapping endpoint with cassandra container.
+ * Cluster shrink scenarios integration tests for token range replica mapping endpoint with the in-jvm dtest framework.
  */
 @ExtendWith(VertxExtension.class)
 public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationTest
@@ -114,12 +114,7 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
     {
 
         int leavingNodesPerDC = 1;
-        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        int numNodes = annotation.nodesPerDc() + annotation.newNodesPerDc();
-        UpgradeableCluster cluster = getMultiDCCluster(numNodes,
-                                                       annotation.numDcs(),
-                                                       BBHelperLeavingNodesMultiDC::install,
-                                                       cassandraTestContext);
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperLeavingNodesMultiDC::install, cassandraTestContext);
 
         runLeavingTestScenario(context,
                                leavingNodesPerDC,
@@ -135,12 +130,7 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
     {
 
         int leavingNodesPerDC = 3;
-        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        int numNodes = annotation.nodesPerDc() + annotation.newNodesPerDc();
-        UpgradeableCluster cluster = getMultiDCCluster(numNodes,
-                                                       annotation.numDcs(),
-                                                       BBHelperHalveClusterMultiDC::install,
-                                                       cassandraTestContext);
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperHalveClusterMultiDC::install, cassandraTestContext);
 
         Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings
         = generateExpectedRangeHalveClusterSizeMultiDC();
@@ -162,9 +152,16 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
     throws Exception
     {
 
-        UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(
-        builder -> builder.withInstanceInitializer(instanceInitializer));
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        TokenSupplier tokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                annotation.newNodesPerDc(),
+                                                                                annotation.numDcs(),
+                                                                                1);
 
+        UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(builder -> {
+            builder.withInstanceInitializer(instanceInitializer);
+            builder.withTokenSupplier(tokenSupplier);
+        });
         runLeavingTestScenario(context,
                                leavingNodesPerDC,
                                transientStateStart,
@@ -221,15 +218,6 @@ public class TokenRangeIntegrationLeavingTest extends BaseTokenRangeIntegrationT
                 assertMappingResponseOK(mappingResponse,
                                         DEFAULT_RF,
                                         dcReplication);
-                int finalNodeCount = (annotation.nodesPerDc() + annotation.newNodesPerDc()) * annotation.numDcs();
-                TokenSupplier tokenSupplier = (annotation.numDcs() > 1) ?
-                                              MultiDcTokenSupplier.evenlyDistributedTokens(
-                                              annotation.nodesPerDc() + annotation.newNodesPerDc(),
-                                              annotation.numDcs(),
-                                              1) :
-                                              TokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc() +
-                                                                                    annotation.newNodesPerDc(),
-                                                                                    1);
 
                 int initialNodeCount = annotation.nodesPerDc() * annotation.numDcs();
                 validateNodeStates(mappingResponse,

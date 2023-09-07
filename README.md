@@ -58,8 +58,7 @@ For example if you populated your cluster with 3 nodes, create interfaces for 12
 To get up and running, create a temporary alias for every node except the first:
 
 ```
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
+ for i in {2..12}; do sudo ifconfig lo0 alias "127.0.0.${i}"; done
 ```
 
 Getting started: Running The Sidecar

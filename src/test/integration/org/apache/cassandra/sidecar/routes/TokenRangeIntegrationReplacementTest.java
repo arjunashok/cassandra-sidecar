@@ -66,13 +66,12 @@ import org.apache.cassandra.utils.Shared;
 
 import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
-import static org.apache.cassandra.sidecar.routes.TokenRangeIntegrationReplacementTest.BBHelperReplacementsMultiDC.NODE_START;
+import static org.apache.cassandra.sidecar.routes.TokenRangeIntegrationReplacementTest
+              .BBHelperReplacementsMultiDC.NODE_START;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Node replacement scenarios integration tests for token range replica mapping endpoint with cassandra container.
- * Node replacement tests are temporarily disabled as they depend on a fix for CASSANDRA-18583
- *
+ * Host replacement scenario integration tests for token range replica mapping endpoint with the in-jvm dtest framework.
  */
 @ExtendWith(VertxExtension.class)
 public class TokenRangeIntegrationReplacementTest extends BaseTokenRangeIntegrationTest
@@ -96,12 +95,7 @@ public class TokenRangeIntegrationReplacementTest extends BaseTokenRangeIntegrat
     throws Exception
     {
 
-        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
-        int numNodes = annotation.nodesPerDc() + annotation.newNodesPerDc();
-        UpgradeableCluster cluster = getMultiDCCluster(numNodes,
-                                                       annotation.numDcs(),
-                                                       BBHelperReplacementsMultiDC::install,
-                                                       cassandraTestContext);
+        UpgradeableCluster cluster = getMultiDCCluster(BBHelperReplacementsMultiDC::install, cassandraTestContext);
 
         List<IUpgradeableInstance> nodesToRemove = Arrays.asList(cluster.get(3), cluster.get(cluster.size()));
         runReplacementTestScenario(context,
@@ -121,9 +115,15 @@ public class TokenRangeIntegrationReplacementTest extends BaseTokenRangeIntegrat
                                             Map<String, Map<Range<BigInteger>, List<String>>> expectedRangeMappings)
     throws Exception
     {
-        UpgradeableCluster cluster =
-        cassandraTestContext.configureAndStartCluster(builder ->
-                                                      builder.withInstanceInitializer(instanceInitializer));
+        CassandraIntegrationTest annotation = sidecarTestContext.cassandraTestContext().annotation;
+        TokenSupplier tokenSupplier = TestTokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc(),
+                                                                                annotation.newNodesPerDc(),
+                                                                                annotation.numDcs(),
+                                                                                1);
+        UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(builder -> {
+            builder.withInstanceInitializer(instanceInitializer);
+            builder.withTokenSupplier(tokenSupplier);
+        });
 
         List<IUpgradeableInstance> nodesToRemove = Arrays.asList(cluster.get(cluster.size()));
         runReplacementTestScenario(context,
@@ -205,15 +205,6 @@ public class TokenRangeIntegrationReplacementTest extends BaseTokenRangeIntegrat
                                         DEFAULT_RF,
                                         dcReplication);
 
-                int finalNodeCount = annotation.nodesPerDc() * annotation.numDcs();
-                TokenSupplier tokenSupplier = (annotation.numDcs() > 1) ?
-                                              MultiDcTokenSupplier.evenlyDistributedTokens(
-                                              annotation.nodesPerDc() + annotation.newNodesPerDc(),
-                                              annotation.numDcs(),
-                                              1) :
-                                              TokenSupplier.evenlyDistributedTokens(annotation.nodesPerDc() +
-                                                                                    annotation.newNodesPerDc(),
-                                                                                    1);
                 List<Integer> nodeNums = newNodes.stream().map(i -> i.config().num()).collect(Collectors.toList());
                 validateNodeStates(mappingResponse,
                                    dcReplication,

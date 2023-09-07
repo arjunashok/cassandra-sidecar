@@ -53,7 +53,6 @@ import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.SuperCall;
 import net.bytebuddy.pool.TypePool;
-import org.apache.cassandra.config.CassandraRelevantProperties;
 import org.apache.cassandra.distributed.UpgradeableCluster;
 import org.apache.cassandra.distributed.api.Feature;
 import org.apache.cassandra.distributed.api.IUpgradeableInstance;
@@ -246,14 +245,14 @@ public class TokenRangeIntegrationReplacementTest extends BaseTokenRangeIntegrat
                                                                         });
 
             new Thread(() -> ClusterUtils.start(replacement, (properties) -> {
-                properties.set(CassandraRelevantProperties.BOOTSTRAP_SKIP_SCHEMA_CHECK, true);
-                properties.set(CassandraRelevantProperties.BROADCAST_INTERVAL_MS,
+                properties.set("cassandra.skip_schema_check", true);
+                properties.set("cassandra.broadcast_interval_ms",
                                Long.toString(TimeUnit.SECONDS.toMillis(30L)));
-                properties.set(CassandraRelevantProperties.RING_DELAY,
+                properties.set("cassandra.ring_delay_ms",
                                Long.toString(TimeUnit.SECONDS.toMillis(10L)));
-                properties.set(CassandraRelevantProperties.BOOTSTRAP_SCHEMA_DELAY_MS,
+                properties.set("cassandra.schema_delay_ms",
                                TimeUnit.SECONDS.toMillis(10L));
-                properties.set(CassandraRelevantProperties.REPLACE_ADDRESS_FIRST_BOOT, remAddress + ":" + remPort);
+                properties.set("cassandra.replace_address_first_boot", remAddress + ":" + remPort);
             })).start();
 
             Uninterruptibles.awaitUninterruptibly(NODE_START, 2, TimeUnit.MINUTES);

@@ -1620,7 +1620,6 @@ abstract class SidecarClientTest
         assertThat(progressStats.totalFilesReceived()).isNotNull().isEqualTo(progressStats.totalFilesToReceive());
         assertThat(progressStats.totalFilesSent()).isNotNull();
 
-
         validateResponseServed(ApiEndpointsV1.STREAM_STATS_ROUTE);
     }
 

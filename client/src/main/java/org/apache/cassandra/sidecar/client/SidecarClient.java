@@ -670,11 +670,12 @@ public class SidecarClient implements AutoCloseable, SidecarClientBlobRestoreExt
      *
      * @return a completable future of the connected client stats
      */
-    public CompletableFuture<StreamStatsResponse> streamsStats()
+    public CompletableFuture<StreamStatsResponse> streamsStats(SidecarInstance instance)
     {
-        return executeRequestAsync(requestBuilder()
-                                   .streamsStatsRequest()
-                                   .build());
+        return executor.executeRequestAsync(requestBuilder()
+                                            .singleInstanceSelectionPolicy(instance)
+                                            .streamsStatsRequest()
+                                            .build());
     }
 
     /**

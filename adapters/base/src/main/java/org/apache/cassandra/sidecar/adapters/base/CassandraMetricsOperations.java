@@ -88,7 +88,11 @@ public class CassandraMetricsOperations implements MetricsOperations
         return new ConnectedClientStatsResponse(entries, totalConnectedClients, connectionsByUser);
     }
 
-    public StreamProgressStats getStreamProgressStats()
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StreamProgressStats streamProgressStats()
     {
         Set<CompositeData> streamData = jmxClient.proxy(StreamManagerJmxOperations.class, STREAM_MANAGER_OBJ_NAME)
                                                  .getCurrentStreams();

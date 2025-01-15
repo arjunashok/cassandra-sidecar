@@ -59,7 +59,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class StreamStatsIntegrationTest extends IntegrationTestBase
 {
     @CassandraIntegrationTest(numDataDirsPerInstance = 4, nodesPerDc = 2, network = true, buildCluster = false)
-    void streamStatsTest(VertxTestContext context, ConfigurableCassandraTestContext cassandraTestContext) throws InterruptedException
+    void streamStatsTest(VertxTestContext context, ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
         BBHelperDecommissioningNode.reset();
         UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(
@@ -84,17 +84,11 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
         // optimal no. of attempts to poll for stats to capture streaming stats during node decommissioning
         for (int i = 0; i < 20; i++)
         {
-            startAsync("Request-" + i , () -> {
-                try
-                {
-                    streamStats(context, hasStats, dataReceived);
-                }
-                catch (Exception e)
-                {
-                    throw new RuntimeException(e);
-                }
-            });
-
+            streamStats(context, hasStats, dataReceived);
+            if (dataReceived.get())
+            {
+                break;
+            }
             Uninterruptibles.sleepUninterruptibly(200, TimeUnit.MILLISECONDS);
         }
 
@@ -107,7 +101,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
     private void streamStats(VertxTestContext context, AtomicBoolean hasStats, AtomicBoolean dataReceived) throws Exception
     {
         String testRoute = "/api/v1/cassandra/stats/streams";
-        testWithClient(context, client -> {
+        testWithClient(client -> {
             BBHelperDecommissioningNode.transientStateEnd.countDown();
             client.get(server.actualPort(), "127.0.0.1", testRoute)
                   .send(context.succeeding(response -> {
@@ -149,7 +143,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
 
         session.execute("CREATE INDEX ryear ON " + tableName + " (race_year);");
 
-        for (int i = 1; i <= 1000; i++)
+        for (int i = 1; i <= 3000; i++)
         {
             session.execute("INSERT INTO " + tableName + " (race_year, race_name, rank, cyclist_name) " +
                             "VALUES (2015, 'Tour of Japan - Stage 4 - Minami > Shinshu', " + i + ", 'Benjamin PRADES');");

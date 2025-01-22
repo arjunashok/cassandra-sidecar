@@ -61,13 +61,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(VertxExtension.class)
 public class StreamStatsIntegrationTest extends IntegrationTestBase
 {
-    @CassandraIntegrationTest(numDataDirsPerInstance = 4, nodesPerDc = 2, network = true, buildCluster = false)
+    @CassandraIntegrationTest(numDataDirsPerInstance = 4, nodesPerDc = 5, network = true, buildCluster = false)
     void streamStatsTest(VertxTestContext context, ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
         BBHelperDecommissioningNode.reset();
         UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(
         builder -> builder.withInstanceInitializer(BBHelperDecommissioningNode::install));
-        IUpgradeableInstance node = cluster.get(2);
+        IUpgradeableInstance node = cluster.get(5);
 
         createTestKeyspace();
         createTestTableAndPopulate();
@@ -175,7 +175,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
 
         public static void install(ClassLoader cl, Integer nodeNumber)
         {
-            if (nodeNumber == 2)
+            if (nodeNumber == 5)
             {
                 TypePool typePool = TypePool.Default.of(cl);
                 TypeDescription description = typePool.describe("org.apache.cassandra.streaming.StreamCoordinator")
@@ -195,6 +195,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
         public static void connectAllStreamSessions(@SuperCall Callable<StreamOperation> orig) throws Exception
         {
             transientStateStart.countDown();
+            Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
             orig.call();
         }
 

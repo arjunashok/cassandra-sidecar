@@ -61,13 +61,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(VertxExtension.class)
 public class StreamStatsIntegrationTest extends IntegrationTestBase
 {
-    @CassandraIntegrationTest(numDataDirsPerInstance = 4, nodesPerDc = 2, network = true, buildCluster = false)
+    @CassandraIntegrationTest(numDataDirsPerInstance = 4, nodesPerDc = 3, network = true, buildCluster = false)
     void streamStatsTest(VertxTestContext context, ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
         BBHelperDecommissioningNode.reset();
         UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(
         builder -> builder.withInstanceInitializer(BBHelperDecommissioningNode::install));
-        IUpgradeableInstance node = cluster.get(2);
+        IUpgradeableInstance node = cluster.get(3);
 
         createTestKeyspace();
         createTestTableAndPopulate();
@@ -157,7 +157,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
 
         session.execute("CREATE INDEX ryear ON " + tableName + " (race_year);");
 
-        for (int i = 1; i <= 5000; i++)
+        for (int i = 1; i <= 3000; i++)
         {
             session.execute("INSERT INTO " + tableName + " (race_year, race_name, rank, cyclist_name) " +
                             "VALUES (2015, 'Tour of Japan - Stage 4 - Minami > Shinshu', " + i + ", 'Benjamin PRADES');");
@@ -175,7 +175,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
 
         public static void install(ClassLoader cl, Integer nodeNumber)
         {
-            if (nodeNumber == 2)
+            if (nodeNumber == 3)
             {
                 TypePool typePool = TypePool.Default.of(cl);
                 TypeDescription description = typePool.describe("org.apache.cassandra.streaming.StreamSession")

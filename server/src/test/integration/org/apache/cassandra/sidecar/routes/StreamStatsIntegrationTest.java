@@ -61,13 +61,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(VertxExtension.class)
 public class StreamStatsIntegrationTest extends IntegrationTestBase
 {
-    @CassandraIntegrationTest(numDataDirsPerInstance = 4, nodesPerDc = 3, network = true, buildCluster = false)
+    @CassandraIntegrationTest(numDataDirsPerInstance = 4, nodesPerDc = 2, network = true, buildCluster = false)
     void streamStatsTest(VertxTestContext context, ConfigurableCassandraTestContext cassandraTestContext) throws Exception
     {
         BBHelperDecommissioningNode.reset();
         UpgradeableCluster cluster = cassandraTestContext.configureAndStartCluster(
         builder -> builder.withInstanceInitializer(BBHelperDecommissioningNode::install));
-        IUpgradeableInstance node = cluster.get(3);
+        IUpgradeableInstance node = cluster.get(2);
 
         createTestKeyspace();
         createTestTableAndPopulate();
@@ -175,13 +175,15 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
 
         public static void install(ClassLoader cl, Integer nodeNumber)
         {
-            if (nodeNumber == 3)
+            if (nodeNumber == 2)
             {
                 TypePool typePool = TypePool.Default.of(cl);
-                TypeDescription description = typePool.describe("org.apache.cassandra.streaming.StreamSession")
+                TypeDescription description = typePool.describe("org.apache.cassandra.streaming.StreamCoordinator")
                                                       .resolve();
                 new ByteBuddy().rebase(description, ClassFileLocator.ForClassLoader.of(cl))
-                               .method(named("onInitializationComplete"))
+                               .method(named("connectAllStreamSessions"))
+//                               .method(named("onInitializationComplete"))
+//                               .method(named("start"))
                                .intercept(MethodDelegation.to(BBHelperDecommissioningNode.class))
                                // Defer class loading until all dependencies are loaded
                                .make(TypeResolutionStrategy.Lazy.INSTANCE, typePool)
@@ -190,7 +192,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
         }
 
         @SuppressWarnings("unused")
-        public static void onInitializationComplete(@SuperCall Callable<StreamOperation> orig) throws Exception
+        public static void connectAllStreamSessions(@SuperCall Callable<StreamOperation> orig) throws Exception
         {
             transientStateStart.countDown();
             orig.call();

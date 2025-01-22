@@ -157,7 +157,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
 
         session.execute("CREATE INDEX ryear ON " + tableName + " (race_year);");
 
-        for (int i = 1; i <= 3000; i++)
+        for (int i = 1; i <= 5000; i++)
         {
             session.execute("INSERT INTO " + tableName + " (race_year, race_name, rank, cyclist_name) " +
                             "VALUES (2015, 'Tour of Japan - Stage 4 - Minami > Shinshu', " + i + ", 'Benjamin PRADES');");

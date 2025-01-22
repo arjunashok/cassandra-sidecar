@@ -195,7 +195,7 @@ public class StreamStatsIntegrationTest extends IntegrationTestBase
         public static void connectAllStreamSessions(@SuperCall Callable<StreamOperation> orig) throws Exception
         {
             transientStateStart.countDown();
-            Uninterruptibles.sleepUninterruptibly(1, TimeUnit.SECONDS);
+            Uninterruptibles.sleepUninterruptibly(3, TimeUnit.SECONDS);
             orig.call();
         }
 
